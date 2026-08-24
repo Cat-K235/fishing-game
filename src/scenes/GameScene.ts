@@ -14,10 +14,20 @@ import {
   depthToY,
 } from "../game/Constants";
 import { TEX } from "../game/Textures";
-import { FISH_SPECIES, pickWeightedFish, type FishSpecies } from "../game/FishData";
+import { FISH_SPECIES, getLocationPool, pickWeightedFish, rarityIndex, type FishSpecies } from "../game/FishData";
 import { stepReel, type ReelState } from "../game/ReelMath";
 import { AudioSynth } from "../game/AudioSynth";
 import { TelegramService } from "../telegram/TelegramService";
+import { Economy } from "../game/Economy";
+import { rodById, tuningForRod, type RodDef } from "../game/RodData";
+import { locationById, locationRarityBounds, effectiveMaxRarityIndex, type LocationDef, type ParticleStyle } from "../game/LocationData";
+import { Fisherman, expressionForRarity } from "../game/Character";
+import { BottomNav } from "../ui/BottomNav";
+import { ShopPanel } from "../ui/ShopPanel";
+import { SellPanel } from "../ui/SellPanel";
+import { MapsPanel } from "../ui/MapsPanel";
+import { showToast } from "../ui/Toast";
+import { TEXT_STYLE } from "../ui/BottomSheet";
 
 type FishingState = "idle" | "casting" | "waiting" | "reeling" | "result";
 
@@ -32,18 +42,21 @@ interface AmbientFish {
   swayT: number;
 }
 
-const BEST_KEY = "pixelfish.best";
-const MUTED_KEY = "pixelfish.muted";
-
-interface BestCatch {
-  name: string;
-  value: number;
-  rarity: string;
+interface AmbientParticle {
+  sprite: Phaser.GameObjects.Image;
+  vx: number;
+  vy: number;
+  seed: number;
 }
+
+const MUTED_KEY = "pixelfish.muted";
 
 export class GameScene extends Phaser.Scene {
   private telegram = new TelegramService();
   private audio = new AudioSynth();
+  private economy!: Economy;
+  private location!: LocationDef;
+  private rod!: RodDef;
 
   private world!: Phaser.GameObjects.Container;
   private swayT = 0;
@@ -53,6 +66,9 @@ export class GameScene extends Phaser.Scene {
   private lilyLayer!: Phaser.GameObjects.Container;
 
   private ambientFish: AmbientFish[] = [];
+  private ambientParticles: AmbientParticle[] = [];
+
+  private fisherman!: Fisherman;
 
   private line!: Phaser.GameObjects.Graphics;
   private bobber!: Phaser.GameObjects.Sprite;
@@ -60,7 +76,6 @@ export class GameScene extends Phaser.Scene {
   private bobberY = PLAYER_Y;
 
   private rippleGroup!: Phaser.GameObjects.Group;
-
   private flashRect!: Phaser.GameObjects.Rectangle;
 
   private state: FishingState = "idle";
@@ -77,14 +92,18 @@ export class GameScene extends Phaser.Scene {
   private fightSwaySeed = 0;
   private reelTickAccum = 0;
 
-  private hudScore!: Phaser.GameObjects.Text;
   private hudPrompt!: Phaser.GameObjects.Text;
   private catchCard!: Phaser.GameObjects.Container;
   private muteBtn!: Phaser.GameObjects.Text;
   private tensionGfx!: Phaser.GameObjects.Graphics;
   private tensionVisible = false;
 
-  private best: BestCatch | null = null;
+  private coinText!: Phaser.GameObjects.Text;
+  private locationText!: Phaser.GameObjects.Text;
+
+  private shopPanel!: ShopPanel;
+  private sellPanel!: SellPanel;
+  private mapsPanel!: MapsPanel;
 
   constructor() {
     super("game");
@@ -93,10 +112,16 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.telegram.init();
     this.audio.setMuted(localStorage.getItem(MUTED_KEY) === "1");
-    this.best = this.loadBest();
+    this.economy = new Economy();
+    this.location = locationById(this.economy.currentLocationId);
+    this.rod = rodById(this.economy.equippedRodId);
 
-    this.buildWorld();
+    this.buildWorld(this.location);
+    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y);
+    this.world.add(this.fisherman);
+
     this.buildHud();
+    this.buildPanels();
     this.wireInput();
 
     this.cameras.main.setBackgroundColor(0x0b1a2a);
@@ -104,40 +129,46 @@ export class GameScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- WORLD
 
-  private buildWorld(): void {
+  private buildWorld(loc: LocationDef): void {
+    this.world?.destroy();
+    this.ambientFish = [];
+    this.ambientParticles = [];
+
     this.world = this.add.container(0, 0);
 
-    const sky = this.add.image(0, 0, TEX.sky).setOrigin(0, 0);
+    const sky = this.add.image(0, 0, TEX.sky(loc.id)).setOrigin(0, 0);
     sky.setDisplaySize(WORLD_W, HORIZON_Y);
 
-    const mountains = this.add.image(0, HORIZON_Y - 55, TEX.mountains).setOrigin(0, 0).setAlpha(0.9);
+    const mountains = this.add.image(0, HORIZON_Y - 55, TEX.mountains(loc.id)).setOrigin(0, 0).setAlpha(0.9);
     mountains.setDisplaySize(WORLD_W, 60);
 
-    const treeline = this.add.image(0, HORIZON_Y - 34, TEX.treeline).setOrigin(0, 0);
+    const treeline = this.add.image(0, HORIZON_Y - 34, TEX.treeline(loc.id)).setOrigin(0, 0);
     treeline.setDisplaySize(WORLD_W, 40);
 
     this.waterTile = this.add
-      .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.water)
+      .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.water(loc.id))
       .setOrigin(0, 0);
     this.shimmerTile = this.add
-      .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.shimmer)
+      .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.shimmer(loc.id))
       .setOrigin(0, 0)
       .setAlpha(0.35);
 
     this.world.add([sky, mountains, treeline, this.waterTile, this.shimmerTile]);
 
-    this.spawnAmbientFish();
+    this.spawnAmbientFish(loc);
     for (const f of this.ambientFish) this.world.add(f.sprite);
 
     this.lilyLayer = this.add.container(0, 0);
     this.world.add(this.lilyLayer);
     this.spawnLilyPads();
 
-    // dock, drawn in front of everything else in the world
+    this.spawnAmbientParticles(loc);
+    for (const p of this.ambientParticles) this.world.add(p.sprite);
+
     const dockH = WORLD_H - DOCK_TOP;
     const plankW = 40;
     for (let x = -plankW / 2; x < WORLD_W + plankW; x += plankW) {
-      const plank = this.add.image(x, DOCK_TOP, TEX.dockPlank).setOrigin(0, 0);
+      const plank = this.add.image(x, DOCK_TOP, TEX.dockPlank(loc.id)).setOrigin(0, 0);
       plank.setDisplaySize(plankW + 1, dockH);
       this.world.add(plank);
     }
@@ -150,9 +181,22 @@ export class GameScene extends Phaser.Scene {
 
     this.rippleGroup = this.add.group();
 
-    this.flashRect = this.add
-      .rectangle(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 0xffffff, 0)
-      .setDepth(50);
+    if (!this.flashRect) {
+      this.flashRect = this.add
+        .rectangle(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 0xffffff, 0)
+        .setDepth(50);
+    }
+  }
+
+  private rebuildForLocation(locationId: string): void {
+    this.location = locationById(locationId);
+    this.state = "idle";
+    this.currentFish = null;
+    this.buildWorld(this.location);
+    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y);
+    this.world.add(this.fisherman);
+    this.locationText.setText(this.location.name);
+    this.hudPrompt.setText("TAP THE WATER TO CAST");
   }
 
   private spawnLilyPads(): void {
@@ -170,10 +214,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private spawnAmbientFish(): void {
+  private spawnAmbientFish(loc: LocationDef): void {
+    const pool = FISH_SPECIES.filter((f) => f.locationId === loc.id);
+    if (pool.length === 0) return;
     const count = 6;
     for (let i = 0; i < count; i++) {
-      const species = FISH_SPECIES[Phaser.Math.Between(0, Math.min(2, FISH_SPECIES.length - 1))];
+      const species = pool[Phaser.Math.Between(0, pool.length - 1)];
       const baseY = depthToY(species.depth) + Phaser.Math.Between(-20, 20);
       const x = Phaser.Math.Between(20, WORLD_W - 20);
       const sprite = this.add.sprite(x, baseY, TEX.fish(species.id), 0);
@@ -193,23 +239,38 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private spawnAmbientParticles(loc: LocationDef): void {
+    const bands: Record<ParticleStyle, { yMin: number; yMax: number; vx: [number, number]; vy: [number, number]; count: number; alpha: number }> = {
+      fireflies: { yMin: WATER_BOTTOM - 150, yMax: WATER_BOTTOM - 10, vx: [-6, 6], vy: [-4, 4], count: 10, alpha: 0.9 },
+      mist: { yMin: HORIZON_Y - 15, yMax: HORIZON_Y + 35, vx: [3, 10], vy: [0, 0], count: 6, alpha: 0.5 },
+      gulls: { yMin: 20, yMax: HORIZON_Y - 45, vx: [14, 26], vy: [-1, 1], count: 4, alpha: 0.9 },
+      motes: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-3, 3], vy: [-12, -6], count: 12, alpha: 0.85 },
+      sparkle: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 130, vx: [-2, 2], vy: [-2, 2], count: 12, alpha: 1 },
+    };
+    const cfg = bands[loc.particle];
+    for (let i = 0; i < cfg.count; i++) {
+      const x = Math.random() * WORLD_W;
+      const y = Phaser.Math.Between(cfg.yMin, cfg.yMax);
+      const sprite = this.add.image(x, y, TEX.ambient(loc.id)).setAlpha(cfg.alpha * (0.4 + Math.random() * 0.6));
+      this.ambientParticles.push({
+        sprite,
+        vx: Phaser.Math.FloatBetween(cfg.vx[0], cfg.vx[1]),
+        vy: Phaser.Math.FloatBetween(cfg.vy[0], cfg.vy[1]),
+        seed: Math.random() * 100,
+      });
+    }
+  }
+
   // ------------------------------------------------------------------ HUD
 
   private buildHud(): void {
-    const textStyle: Phaser.Types.GameObjects.Text.TextStyle = {
-      fontFamily: "Courier New, monospace",
-      fontSize: "14px",
-      color: "#f4f1de",
-      stroke: "#12141c",
-      strokeThickness: 3,
-    };
-
-    this.hudScore = this.add.text(12, 10, this.scoreLabel(), textStyle).setDepth(40);
+    this.coinText = this.add
+      .text(34, 10, `${this.economy.coins}`, { ...TEXT_STYLE, fontSize: "15px" })
+      .setDepth(40);
+    this.add.image(16, 18, TEX.coin).setDepth(40);
 
     this.muteBtn = this.add
-      .text(WORLD_W - 34, 10, this.audio.isMuted() ? "\u{1F507}" : "\u{1F50A}", {
-        fontSize: "18px",
-      })
+      .text(WORLD_W - 26, 10, this.audio.isMuted() ? "\u{1F507}" : "\u{1F50A}", { fontSize: "16px" })
       .setDepth(40)
       .setInteractive({ useHandCursor: true });
     this.muteBtn.on("pointerdown", (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
@@ -219,74 +280,136 @@ export class GameScene extends Phaser.Scene {
       this.muteBtn.setText(muted ? "\u{1F507}" : "\u{1F50A}");
     });
 
+    this.locationText = this.add
+      .text(WORLD_W - 34, 10, this.location.name, { ...TEXT_STYLE, fontSize: "12px" })
+      .setOrigin(1, 0)
+      .setDepth(40);
+
     this.hudPrompt = this.add
-      .text(WORLD_W / 2, DOCK_TOP - 26, "TAP THE WATER TO CAST", {
-        ...textStyle,
-        fontSize: "13px",
-      })
+      .text(WORLD_W / 2, DOCK_TOP - 26, "TAP THE WATER TO CAST", { ...TEXT_STYLE, fontSize: "13px" })
       .setOrigin(0.5)
       .setDepth(40);
 
     this.tensionGfx = this.add.graphics().setDepth(40);
 
     this.catchCard = this.add.container(WORLD_W / 2, WORLD_H / 2 - 40).setDepth(60).setAlpha(0);
-    const cardBg = this.add.rectangle(0, 0, 220, 96, 0x1c2030, 0.92).setStrokeStyle(3, 0xffd93d);
+    const cardBg = this.add.rectangle(0, 0, 220, 100, 0x1c2030, 0.92).setStrokeStyle(3, 0xffd93d);
     const cardTitle = this.add
-      .text(0, -32, "CAUGHT!", { ...textStyle, fontSize: "12px", color: "#ffd93d" })
+      .text(0, -34, "CAUGHT!", { ...TEXT_STYLE, fontSize: "12px", color: "#ffd93d" })
       .setOrigin(0.5);
-    const cardName = this.add.text(0, -8, "", { ...textStyle, fontSize: "16px" }).setOrigin(0.5).setName("name");
+    const cardName = this.add.text(0, -10, "", { ...TEXT_STYLE, fontSize: "16px" }).setOrigin(0.5).setName("name");
     const cardMeta = this.add
-      .text(0, 18, "", { ...textStyle, fontSize: "12px", color: "#9aa0b4" })
+      .text(0, 16, "", { ...TEXT_STYLE, fontSize: "12px", color: "#9aa0b4" })
       .setOrigin(0.5)
       .setName("meta");
     this.catchCard.add([cardBg, cardTitle, cardName, cardMeta]);
   }
 
-  private scoreLabel(): string {
-    const best = this.best;
-    return best ? `BEST: ${best.name.toUpperCase()} (${best.value})` : "BEST: —";
+  private buildPanels(): void {
+    this.shopPanel = new ShopPanel(this, this.economy, () => {
+      this.rod = rodById(this.economy.equippedRodId);
+      this.refreshCoins();
+    });
+    this.sellPanel = new SellPanel(this, this.economy, (earned) => this.onFishSold(earned));
+    this.mapsPanel = new MapsPanel(
+      this,
+      this.economy,
+      () => this.refreshCoins(),
+      (locationId) => this.rebuildForLocation(locationId)
+    );
+    new BottomNav(
+      this,
+      () => this.openPanel(this.shopPanel),
+      () => this.openPanel(this.sellPanel),
+      () => this.openPanel(this.mapsPanel)
+    );
   }
 
-  private loadBest(): BestCatch | null {
-    try {
-      const raw = localStorage.getItem(BEST_KEY);
-      return raw ? (JSON.parse(raw) as BestCatch) : null;
-    } catch {
-      return null;
+  private openPanel(panel: ShopPanel | SellPanel | MapsPanel): void {
+    if (this.state !== "idle") return;
+    for (const p of [this.shopPanel, this.sellPanel, this.mapsPanel]) if (p !== panel && p.isOpen) p.close();
+    panel.open();
+  }
+
+  private refreshCoins(): void {
+    this.coinText.setText(`${this.economy.coins}`);
+  }
+
+  private onFishSold(earned: number): void {
+    if (earned <= 0) return;
+    this.audio.coinChime();
+    this.telegram.haptic("light");
+    this.animateCoinGain(earned);
+    this.spawnCoinBurst(16, 18);
+  }
+
+  private animateCoinGain(earned: number): void {
+    const start = this.economy.coins - earned;
+    const counter = { v: start };
+    this.tweens.add({
+      targets: counter,
+      v: this.economy.coins,
+      duration: 500,
+      ease: "Cubic.Out",
+      onUpdate: () => this.coinText.setText(`${Math.round(counter.v)}`),
+    });
+  }
+
+  private spawnCoinBurst(x: number, y: number): void {
+    for (let i = 0; i < 10; i++) {
+      const p = this.add.image(x, y, TEX.coin).setDepth(95).setScale(0.7);
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 16 + Math.random() * 26;
+      this.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        duration: 450 + Math.random() * 200,
+        ease: "Cubic.Out",
+        onComplete: () => p.destroy(),
+      });
     }
-  }
-
-  private saveBest(fish: FishSpecies): void {
-    if (this.best && this.best.value >= fish.scoreValue) return;
-    this.best = { name: fish.name, value: fish.scoreValue, rarity: fish.rarity };
-    localStorage.setItem(BEST_KEY, JSON.stringify(this.best));
-    this.hudScore.setText(this.scoreLabel());
   }
 
   // ---------------------------------------------------------------- INPUT
 
   private wireInput(): void {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (this.state === "idle") this.startCast(pointer.x, pointer.y);
+      if (this.state === "idle" && !this.anyPanelOpen()) this.startCast(pointer.x, pointer.y);
     });
+  }
+
+  private anyPanelOpen(): boolean {
+    return this.shopPanel.isOpen || this.sellPanel.isOpen || this.mapsPanel.isOpen;
   }
 
   // ----------------------------------------------------------------- CAST
 
   private startCast(px: number, py: number): void {
+    const bounds = locationRarityBounds(this.location);
+    const maxIdx = effectiveMaxRarityIndex(this.location, this.rod);
+    const pool = getLocationPool(this.location.id, bounds.min, maxIdx);
+    if (pool.length === 0) {
+      showToast(this, "YOUR ROD CAN'T HANDLE THESE WATERS", DOCK_TOP - 60, "#e63946");
+      return;
+    }
+
     this.state = "casting";
     this.castElapsed = 0;
     this.castFrom = { x: DOCK_CENTER_X, y: PLAYER_Y };
     const tx = Phaser.Math.Clamp(px, CAST_MARGIN_X, WORLD_W - CAST_MARGIN_X);
     const ty = Phaser.Math.Clamp(py, CAST_MIN_Y, CAST_MAX_Y);
     this.castTo = { x: tx, y: ty };
-    this.castDuration = 0.32 + (Math.abs(ty - this.castFrom.y) / (CAST_MAX_Y - CAST_MIN_Y)) * 0.28;
+    const baseDuration = 0.32 + (Math.abs(ty - this.castFrom.y) / (CAST_MAX_Y - CAST_MIN_Y)) * 0.28;
+    this.castDuration = baseDuration / this.rod.castSpeedMult;
 
-    this.currentFish = pickWeightedFish();
+    this.currentFish = pickWeightedFish(pool, this.rod.rareBonusPct);
 
     this.bobber.setVisible(true);
     this.bobber.setScale(1);
     this.hudPrompt.setText("");
+    this.fisherman.playCast(this.castDuration * 1000);
     this.telegram.haptic("light");
   }
 
@@ -298,7 +421,6 @@ export class GameScene extends Phaser.Scene {
     const y = Phaser.Math.Linear(this.castFrom.y, this.castTo.y, t) - Math.sin(t * Math.PI) * arcHeight;
     this.bobberX = x;
     this.bobberY = y;
-    // stretch along the arc while airborne, squash on landing
     const stretch = 1 + Math.sin(t * Math.PI) * 0.35;
     this.bobber.setScale(1 / stretch, stretch);
 
@@ -315,8 +437,8 @@ export class GameScene extends Phaser.Scene {
     this.spawnRipple(this.bobberX, this.bobberY, 120);
     this.audio.plop();
 
-    const fish = this.currentFish!;
-    this.waitTimer = Phaser.Math.FloatBetween(fish.biteDelay[0], fish.biteDelay[1]);
+    const fish = this.currentFish;
+    this.waitTimer = fish ? Phaser.Math.FloatBetween(fish.biteDelay[0], fish.biteDelay[1]) : 999;
     this.state = "waiting";
     this.hudPrompt.setText("...");
   }
@@ -360,6 +482,7 @@ export class GameScene extends Phaser.Scene {
     this.bobber.setScale(0.8, 1.3);
     this.tweens.add({ targets: this.bobber, scaleX: 1, scaleY: 1, duration: 160, ease: "Back.Out" });
 
+    this.fisherman.startReelLoop();
     this.cameras.main.shake(120, 0.006);
     this.audio.bitePing();
     this.telegram.haptic("medium");
@@ -383,7 +506,7 @@ export class GameScene extends Phaser.Scene {
     if (this.reelGrace > 0) {
       this.reelGrace -= dt;
     } else {
-      const { state, outcome } = stepReel(this.reelState, dt, holding, pull, fish.fightStrength);
+      const { state, outcome } = stepReel(this.reelState, dt, holding, pull, fish.fightStrength, tuningForRod(this.rod));
       this.reelState = state;
 
       if (holding) {
@@ -425,7 +548,6 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(color, 1);
     g.fillRect(x + 2, y + h - 2 - fillH, w - 4, fillH);
 
-    // progress notch on the side
     const px = x - 10;
     g.fillStyle(0x12141c, 0.85);
     g.fillRect(px, y, 6, h);
@@ -443,11 +565,12 @@ export class GameScene extends Phaser.Scene {
     this.world.x = 0;
     this.world.y = 0;
     this.hudPrompt.setText("");
+    this.fisherman.stopReelLoop();
 
     const startX = this.bobberX;
     const startY = this.bobberY;
-    const endX = DOCK_CENTER_X + Phaser.Math.Between(-30, 30);
-    const endY = PLAYER_Y;
+    const endX = DOCK_CENTER_X + 20;
+    const endY = PLAYER_Y - 46;
 
     this.bobber.setVisible(false);
     const fishSprite = this.add.sprite(startX, startY, TEX.fish(fish.id), 0).setScale(1.6);
@@ -478,19 +601,25 @@ export class GameScene extends Phaser.Scene {
     sprite.setScale(2.1, 1.1);
     this.tweens.add({ targets: sprite, scaleX: 1.6, scaleY: 1.6, duration: 260, ease: "Elastic.Out" });
 
-    this.flashRect.setAlpha(0.55);
-    this.tweens.add({ targets: this.flashRect, alpha: 0, duration: 180 });
+    const big = rarityIndex(fish.rarity) >= rarityIndex("epic");
 
-    this.burstParticles(sprite.x, sprite.y);
+    this.flashRect.setAlpha(big ? 0.8 : 0.5);
+    this.tweens.add({ targets: this.flashRect, alpha: 0, duration: big ? 320 : 180 });
+    this.cameras.main.shake(big ? 260 : 100, big ? 0.014 : 0.004);
+
+    this.burstParticles(sprite.x, sprite.y, big);
     this.audio.catchJingle();
+    this.telegram.haptic(big ? "heavy" : "medium");
     this.telegram.hapticNotification("success");
-    this.saveBest(fish);
+
+    this.fisherman.playCatch(expressionForRarity(fish.rarity));
+    this.economy.addFish(fish.id);
 
     const nameText = this.catchCard.getByName("name") as Phaser.GameObjects.Text;
     const metaText = this.catchCard.getByName("meta") as Phaser.GameObjects.Text;
     nameText.setText(fish.name);
-    metaText.setText(`${fish.rarity.toUpperCase()}  +${fish.scoreValue}`);
-    this.tweens.add({ targets: this.catchCard, alpha: 1, duration: 150, yoyo: false });
+    metaText.setText(`${fish.rarity.toUpperCase()}  ~${fish.sellValue}c`);
+    this.tweens.add({ targets: this.catchCard, alpha: 1, duration: 150 });
 
     this.time.delayedCall(1300, () => {
       this.tweens.add({ targets: this.catchCard, alpha: 0, duration: 200 });
@@ -509,6 +638,7 @@ export class GameScene extends Phaser.Scene {
     this.world.x = 0;
     this.world.y = 0;
     this.hudPrompt.setText("LINE SNAPPED!");
+    this.fisherman.playSnapFlinch();
 
     const snapBackX = DOCK_CENTER_X;
     const snapBackY = PLAYER_Y;
@@ -543,7 +673,8 @@ export class GameScene extends Phaser.Scene {
     this.tensionGfx.clear();
     this.world.x = 0;
     this.world.y = 0;
-    this.hudPrompt.setText("IT GOT AWAY...");
+    this.fisherman.stopReelLoop();
+    showToast(this, "GOT AWAY...", DOCK_TOP - 40);
 
     this.spawnRipple(this.bobberX, this.bobberY, 0);
     this.bobber.setVisible(false);
@@ -552,13 +683,14 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(750, () => this.resetToIdle());
   }
 
-  private burstParticles(x: number, y: number): void {
+  private burstParticles(x: number, y: number, big: boolean): void {
     const keys = [TEX.particle("gold"), TEX.particle("teal"), TEX.particle("white"), TEX.particle("pink")];
-    for (let i = 0; i < 22; i++) {
+    const count = big ? 34 : 22;
+    for (let i = 0; i < count; i++) {
       const key = keys[Phaser.Math.Between(0, keys.length - 1)];
       const p = this.add.image(x, y, key).setDepth(55);
       const angle = Math.random() * Math.PI * 2;
-      const dist = 30 + Math.random() * 50;
+      const dist = (big ? 40 : 30) + Math.random() * (big ? 70 : 50);
       const tx = x + Math.cos(angle) * dist;
       const ty = y + Math.sin(angle) * dist - 20;
       this.tweens.add({
@@ -599,6 +731,8 @@ export class GameScene extends Phaser.Scene {
 
     this.updateAmbientFish(dt);
     this.updateLilyPads(time);
+    this.updateAmbientParticles(dt, time);
+    this.fisherman.updateIdle(dt);
 
     switch (this.state) {
       case "casting":
@@ -623,8 +757,11 @@ export class GameScene extends Phaser.Scene {
   private drawLine(): void {
     this.line.clear();
     this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
+    const tip = this.fisherman.getRodTipWorld();
+    tip.x -= this.world.x;
+    tip.y -= this.world.y;
     this.line.beginPath();
-    this.line.moveTo(DOCK_CENTER_X, PLAYER_Y);
+    this.line.moveTo(tip.x, tip.y);
     this.line.lineTo(this.bobberX, this.bobberY);
     this.line.strokePath();
   }
@@ -655,6 +792,18 @@ export class GameScene extends Phaser.Scene {
       const by = pad.getData("baseY") as number;
       pad.x = bx + Math.sin(time / 1800 + seed) * 3;
       pad.y = by + Math.cos(time / 2200 + seed) * 2;
+    }
+  }
+
+  private updateAmbientParticles(dt: number, time: number): void {
+    for (const p of this.ambientParticles) {
+      p.sprite.x += p.vx * dt;
+      p.sprite.y += p.vy * dt;
+      if (p.sprite.x < -10) p.sprite.x = WORLD_W + 10;
+      if (p.sprite.x > WORLD_W + 10) p.sprite.x = -10;
+      if (p.sprite.y < WATER_TOP - 10) p.sprite.y = WATER_BOTTOM;
+      if (p.sprite.y > WATER_BOTTOM + 10) p.sprite.y = WATER_TOP;
+      p.sprite.setAlpha(0.4 + Math.abs(Math.sin(time / 500 + p.seed)) * 0.5);
     }
   }
 }

@@ -1,5 +1,7 @@
 import Phaser from "phaser";
 import { FISH_SPECIES } from "./FishData";
+import { LOCATIONS, type LocationPalette, type ParticleStyle } from "./LocationData";
+import { RODS } from "./RodData";
 
 // All art in this game is generated procedurally onto canvas textures at
 // boot time — there is no asset pipeline, no network fetch, so the app boots
@@ -59,42 +61,26 @@ function refresh(_scene: Phaser.Scene, key: string): void {
   canvasTextures.get(key)?.refresh();
 }
 
-export const PAL = {
-  skyTop: 0x151831,
-  skyMid: 0x4a3466,
-  skyLow: 0xd97a3d,
-  skyHorizon: 0xffcf7a,
-  mountain: 0x2c2140,
-  mountainHaze: 0x4a3f66,
-  treeline: 0x16261f,
-  waterDeep: 0x0c2b3a,
-  waterMid: 0x184a5c,
-  waterShallow: 0x2f7a82,
-  shimmer: 0xbfe9e8,
-  dockWood: 0x5b3a29,
-  dockWoodDark: 0x3e2618,
-  dockEdge: 0x2a1810,
-};
+const DOCK_EDGE = 0x2a1810;
 
-export function generateSky(scene: Phaser.Scene, key: string, w: number, h: number): void {
+export function generateSky(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
   const bands = 24;
   const bandH = Math.ceil(h / bands);
   for (let i = 0; i < bands; i++) {
     const t = i / (bands - 1);
-    // top -> mid -> low -> horizon glow, warm amber near the bottom
     let a: number, b: number, localT: number;
     if (t < 0.4) {
-      a = PAL.skyTop;
-      b = PAL.skyMid;
+      a = pal.skyTop;
+      b = pal.skyMid;
       localT = t / 0.4;
     } else if (t < 0.78) {
-      a = PAL.skyMid;
-      b = PAL.skyLow;
+      a = pal.skyMid;
+      b = pal.skyLow;
       localT = (t - 0.4) / 0.38;
     } else {
-      a = PAL.skyLow;
-      b = PAL.skyHorizon;
+      a = pal.skyLow;
+      b = pal.skyHorizon;
       localT = (t - 0.78) / 0.22;
     }
     ditherRect(ctx, 0, i * bandH, w, bandH, a, b, localT, 3);
@@ -132,17 +118,16 @@ function jaggedSilhouette(
   ctx.fill();
 }
 
-export function generateMountains(scene: Phaser.Scene, key: string, w: number, h: number): void {
+export function generateMountains(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
-  jaggedSilhouette(ctx, w, h, h - 4, h * 0.55, 7, PAL.mountainHaze, 0.55, 7);
-  jaggedSilhouette(ctx, w, h, h + 6, h * 0.4, 9, PAL.mountain, 0.85, 21);
+  jaggedSilhouette(ctx, w, h, h - 4, h * 0.55, 7, pal.mountainHaze, 0.55, 7);
+  jaggedSilhouette(ctx, w, h, h + 6, h * 0.4, 9, pal.mountain, 0.85, 21);
   refresh(scene, key);
 }
 
-export function generateTreeline(scene: Phaser.Scene, key: string, w: number, h: number): void {
+export function generateTreeline(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
-  // pine-cluster silhouette: repeated triangular spikes of varying height
-  ctx.fillStyle = rgbToCss(hexToRgb(PAL.treeline), 1);
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.treeline), 1);
   const spikeW = 9;
   let x = -4;
   let seed = 5;
@@ -165,18 +150,17 @@ export function generateTreeline(scene: Phaser.Scene, key: string, w: number, h:
   refresh(scene, key);
 }
 
-export function generateWaterTile(scene: Phaser.Scene, key: string, size = 32): void {
+export function generateWaterTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, size, size);
-  // Diagonal dithered banding to read as gentle waves when scrolled via tilePosition.
   for (let y = 0; y < size; y++) {
     const wave = Math.sin((y / size) * Math.PI * 2) * 0.15;
     const mix = Phaser.Math.Clamp(0.35 + wave, 0, 1);
-    ditherRect(ctx, 0, y, size, 1, PAL.waterDeep, PAL.waterMid, mix, 1);
+    ditherRect(ctx, 0, y, size, 1, pal.waterDeep, pal.waterMid, mix, 1);
   }
   refresh(scene, key);
 }
 
-export function generateShimmerTile(scene: Phaser.Scene, key: string, size = 32): void {
+export function generateShimmerTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, size, size);
   ctx.clearRect(0, 0, size, size);
   let seed = 99;
@@ -184,7 +168,7 @@ export function generateShimmerTile(scene: Phaser.Scene, key: string, size = 32)
     seed = (seed * 9301 + 49297) % 233280;
     return seed / 233280;
   };
-  ctx.fillStyle = rgbToCss(hexToRgb(PAL.shimmer), 0.55);
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.shimmer), 0.55);
   for (let i = 0; i < 10; i++) {
     const x = Math.floor(next() * size);
     const y = Math.floor(next() * size);
@@ -212,10 +196,10 @@ export function generateLilyPad(scene: Phaser.Scene, key: string, variant: numbe
   refresh(scene, key);
 }
 
-export function generateDockPlank(scene: Phaser.Scene, key: string, w = 40, h = 16): void {
+export function generateDockPlank(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
-  ditherRect(ctx, 0, 0, w, h, PAL.dockWood, PAL.dockWoodDark, 0.25, 2);
-  ctx.fillStyle = rgbToCss(hexToRgb(PAL.dockEdge));
+  ditherRect(ctx, 0, 0, w, h, pal.dockWood, pal.dockWoodDark, 0.25, 2);
+  ctx.fillStyle = rgbToCss(hexToRgb(DOCK_EDGE));
   ctx.fillRect(0, 0, w, 2);
   for (let gx = 4; gx < w; gx += 9) {
     ctx.fillRect(gx, 3, 1, h - 5);
@@ -281,6 +265,63 @@ export function generateParticle(scene: Phaser.Scene, key: string, color: number
   refresh(scene, key);
 }
 
+/** Small ambient-life particle, one per location's `particle` style. */
+export function generateLocationParticle(scene: Phaser.Scene, key: string, style: ParticleStyle): void {
+  const s = 10;
+  const ctx = createCtx(scene, key, s, s);
+  switch (style) {
+    case "fireflies":
+      ctx.fillStyle = "rgba(255,217,61,0.25)";
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffe98a";
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "mist":
+      ctx.fillStyle = "rgba(220,230,225,0.28)";
+      ctx.beginPath();
+      ctx.ellipse(s / 2, s / 2, s / 2, s / 3.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "gulls":
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, s / 2);
+      ctx.quadraticCurveTo(s / 2, 0, s, s / 2);
+      ctx.stroke();
+      break;
+    case "motes":
+      ctx.fillStyle = "rgba(94,242,200,0.3)";
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#bffce9";
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "sparkle":
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(s / 2, 0);
+      ctx.lineTo(s / 2 + 1.4, s / 2 - 1.4);
+      ctx.lineTo(s, s / 2);
+      ctx.lineTo(s / 2 + 1.4, s / 2 + 1.4);
+      ctx.lineTo(s / 2, s);
+      ctx.lineTo(s / 2 - 1.4, s / 2 + 1.4);
+      ctx.lineTo(0, s / 2);
+      ctx.lineTo(s / 2 - 1.4, s / 2 - 1.4);
+      ctx.closePath();
+      ctx.fill();
+      break;
+  }
+  refresh(scene, key);
+}
+
 /** 2-frame fish spritesheet (tail sway) drawn side by side, registered as frames 0/1. */
 export function generateFishTexture(scene: Phaser.Scene, key: string, length: number, colors: { body: number; belly: number; fin: number }): void {
   const h = Math.round(length * 0.55);
@@ -294,7 +335,6 @@ export function generateFishTexture(scene: Phaser.Scene, key: string, length: nu
     const bodyW = frameW * 0.62;
     const bodyH = h * 0.62;
 
-    // tail fin
     ctx.save();
     ctx.translate(ox + frameW * 0.12, cy);
     ctx.rotate(tailAngle);
@@ -307,19 +347,16 @@ export function generateFishTexture(scene: Phaser.Scene, key: string, length: nu
     ctx.fill();
     ctx.restore();
 
-    // body
     ctx.fillStyle = rgbToCss(hexToRgb(colors.body));
     ctx.beginPath();
     ctx.ellipse(cx, cy, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // belly highlight
     ctx.fillStyle = rgbToCss(hexToRgb(colors.belly), 0.85);
     ctx.beginPath();
     ctx.ellipse(cx, cy + bodyH * 0.18, bodyW / 2.4, bodyH / 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // dorsal fin
     ctx.fillStyle = rgbToCss(hexToRgb(colors.fin));
     ctx.beginPath();
     ctx.moveTo(cx - bodyW * 0.05, cy - bodyH / 2);
@@ -328,7 +365,6 @@ export function generateFishTexture(scene: Phaser.Scene, key: string, length: nu
     ctx.closePath();
     ctx.fill();
 
-    // eye
     ctx.fillStyle = "#141414";
     ctx.beginPath();
     ctx.arc(cx + bodyW * 0.28, cy - bodyH * 0.06, Math.max(1, bodyW * 0.05), 0, Math.PI * 2);
@@ -344,35 +380,251 @@ export function generateFishTexture(scene: Phaser.Scene, key: string, length: nu
   tex.add(1, 0, frameW, 0, frameW, h);
 }
 
+// -------------------------------------------------------------- CHARACTER
+
+const SKIN = 0xe8b48a;
+const SHIRT = 0xd94f4f;
+const PANTS = 0x3a4a63;
+const BOOTS = 0x2a1810;
+const HAT = 0x6b4a2e;
+
+export function generateCharacterLegs(scene: Phaser.Scene, key: string): void {
+  const w = 22,
+    h = 16;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = rgbToCss(hexToRgb(PANTS));
+  ctx.fillRect(4, 0, 6, h - 5);
+  ctx.fillRect(w - 10, 0, 6, h - 5);
+  ctx.fillStyle = rgbToCss(hexToRgb(BOOTS));
+  ctx.fillRect(3, h - 6, 8, 6);
+  ctx.fillRect(w - 11, h - 6, 8, 6);
+  refresh(scene, key);
+}
+
+export function generateCharacterTorso(scene: Phaser.Scene, key: string): void {
+  const w = 26,
+    h = 22;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = rgbToCss(hexToRgb(SHIRT));
+  ctx.beginPath();
+  ctx.moveTo(4, h);
+  ctx.lineTo(2, 6);
+  ctx.quadraticCurveTo(w / 2, -2, w - 2, 6);
+  ctx.lineTo(w - 4, h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.fillRect(4, h - 6, w - 8, 4);
+  refresh(scene, key);
+}
+
+/** Head with a swappable face expression: neutral / smile / shocked / stars. */
+export function generateCharacterHead(scene: Phaser.Scene, key: string, expression: "neutral" | "smile" | "shocked" | "stars"): void {
+  const w = 20,
+    h = 20;
+  const ctx = createCtx(scene, key, w, h);
+
+  // hat brim + crown
+  ctx.fillStyle = rgbToCss(hexToRgb(HAT));
+  ctx.fillRect(1, 5, w - 2, 3);
+  ctx.beginPath();
+  ctx.ellipse(w / 2, 5, w / 2 - 3, 5, 0, Math.PI, 0);
+  ctx.fill();
+
+  // face
+  ctx.fillStyle = rgbToCss(hexToRgb(SKIN));
+  ctx.beginPath();
+  ctx.ellipse(w / 2, h / 2 + 3, w / 2 - 3, h / 2 - 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const eyeY = h / 2 + 1;
+  const lx = w / 2 - 3.5;
+  const rx = w / 2 + 3.5;
+
+  ctx.fillStyle = "#1c1c1c";
+  if (expression === "shocked") {
+    ctx.beginPath();
+    ctx.arc(lx, eyeY, 2, 0, Math.PI * 2);
+    ctx.arc(rx, eyeY, 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (expression === "stars") {
+    ctx.fillStyle = "#ffd93d";
+    for (const ex of [lx, rx]) {
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+        const r = i % 2 === 0 ? 2.2 : 1;
+        const px = ex + Math.cos(a) * r;
+        const py = eyeY + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else {
+    ctx.fillRect(lx - 1, eyeY - 1, 2, 2);
+    ctx.fillRect(rx - 1, eyeY - 1, 2, 2);
+  }
+
+  // mouth
+  ctx.strokeStyle = "#1c1c1c";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  if (expression === "smile") {
+    ctx.arc(w / 2, eyeY + 2.5, 3, 0.15 * Math.PI, 0.85 * Math.PI);
+  } else if (expression === "shocked") {
+    ctx.ellipse(w / 2, eyeY + 4, 1.6, 2.2, 0, 0, Math.PI * 2);
+  } else if (expression === "stars") {
+    ctx.arc(w / 2, eyeY + 3, 3.4, 0.1 * Math.PI, 0.9 * Math.PI);
+  } else {
+    ctx.moveTo(w / 2 - 2.5, eyeY + 4);
+    ctx.lineTo(w / 2 + 2.5, eyeY + 4);
+  }
+  ctx.stroke();
+
+  refresh(scene, key);
+}
+
+/** Arm + rod as one rigid piece, pivoted at the shoulder (left edge, vertical middle). */
+export function generateCharacterArmRod(scene: Phaser.Scene, key: string): void {
+  const w = 60,
+    h = 14;
+  const ctx = createCtx(scene, key, w, h);
+  // arm (sleeve)
+  ctx.fillStyle = rgbToCss(hexToRgb(SHIRT));
+  ctx.fillRect(0, h / 2 - 3, 16, 6);
+  ctx.fillStyle = rgbToCss(hexToRgb(SKIN));
+  ctx.fillRect(14, h / 2 - 2.5, 8, 5);
+  // rod
+  ctx.strokeStyle = "#6b4a2e";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(18, h / 2);
+  ctx.lineTo(w - 2, h / 2 - 5);
+  ctx.stroke();
+  ctx.fillStyle = "#4a3420";
+  ctx.fillRect(16, h / 2 - 2, 5, 4);
+  refresh(scene, key);
+}
+
+// -------------------------------------------------------------------- ICONS
+
+export function generateRodIcon(scene: Phaser.Scene, key: string, accent: number): void {
+  const w = 48,
+    h = 20;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.strokeStyle = "#6b4a2e";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(2, h - 2);
+  ctx.lineTo(w - 4, 3);
+  ctx.stroke();
+  ctx.fillStyle = rgbToCss(hexToRgb(accent));
+  ctx.beginPath();
+  ctx.arc(w - 4, 3, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2a1810";
+  ctx.fillRect(0, h - 6, 8, 6);
+  refresh(scene, key);
+}
+
+export function generateCoinIcon(scene: Phaser.Scene, key: string): void {
+  const s = 16;
+  const ctx = createCtx(scene, key, s, s);
+  ctx.fillStyle = "#c98a1a";
+  ctx.beginPath();
+  ctx.arc(s / 2, s / 2, s / 2 - 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffd93d";
+  ctx.beginPath();
+  ctx.arc(s / 2 - 1, s / 2 - 1, s / 2 - 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff2b0";
+  ctx.beginPath();
+  ctx.arc(s / 2 - 3, s / 2 - 3, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  refresh(scene, key);
+}
+
+export function generateLockIcon(scene: Phaser.Scene, key: string): void {
+  const w = 16,
+    h = 18;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.strokeStyle = "#e6c94a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(w / 2, 6, 4.5, Math.PI, 0);
+  ctx.stroke();
+  ctx.fillStyle = "#e6c94a";
+  ctx.fillRect(1, 7, w - 2, h - 8);
+  ctx.fillStyle = "#4a3a10";
+  ctx.fillRect(w / 2 - 1.5, 10, 3, 5);
+  refresh(scene, key);
+}
+
 export const TEX = {
-  sky: "tex-sky",
-  mountains: "tex-mountains",
-  treeline: "tex-treeline",
-  water: "tex-water",
-  shimmer: "tex-shimmer",
+  sky: (loc: string) => `tex-sky-${loc}`,
+  mountains: (loc: string) => `tex-mountains-${loc}`,
+  treeline: (loc: string) => `tex-treeline-${loc}`,
+  water: (loc: string) => `tex-water-${loc}`,
+  shimmer: (loc: string) => `tex-shimmer-${loc}`,
+  ambient: (loc: string) => `tex-ambient-${loc}`,
   lilyPad: (i: number) => `tex-lilypad-${i}`,
-  dockPlank: "tex-dock-plank",
+  dockPlank: (loc: string) => `tex-dock-plank-${loc}`,
   bobber: "tex-bobber",
   ripple: "tex-ripple",
   particle: (name: string) => `tex-particle-${name}`,
   fish: (id: string) => `tex-fish-${id}`,
+  charLegs: "tex-char-legs",
+  charTorso: "tex-char-torso",
+  charHead: (expr: string) => `tex-char-head-${expr}`,
+  charArmRod: "tex-char-armrod",
+  rodIcon: (id: string) => `tex-rodicon-${id}`,
+  coin: "tex-coin",
+  lock: "tex-lock",
+};
+
+const ROD_ICON_COLORS: Record<string, number> = {
+  twig: 0x8a6a4a,
+  iron: 0xaeb4bb,
+  carbon: 0x3a3f4a,
+  deep: 0x2f6e8a,
+  mythic: 0xb98cf2,
 };
 
 export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): void {
-  generateSky(scene, TEX.sky, w, Math.round(h * 0.34));
-  generateMountains(scene, TEX.mountains, w, 60);
-  generateTreeline(scene, TEX.treeline, w, 40);
-  generateWaterTile(scene, TEX.water, 32);
-  generateShimmerTile(scene, TEX.shimmer, 48);
+  for (const loc of LOCATIONS) {
+    generateSky(scene, TEX.sky(loc.id), w, Math.round(h * 0.34), loc.palette);
+    generateMountains(scene, TEX.mountains(loc.id), w, 60, loc.palette);
+    generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
+    generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
+    generateShimmerTile(scene, TEX.shimmer(loc.id), 48, loc.palette);
+    generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
+    generateLocationParticle(scene, TEX.ambient(loc.id), loc.particle);
+  }
+
   for (let i = 0; i < 3; i++) generateLilyPad(scene, TEX.lilyPad(i), i);
-  generateDockPlank(scene, TEX.dockPlank, 40, 16);
   generateBobber(scene, TEX.bobber);
   generateRipple(scene, TEX.ripple);
   generateParticle(scene, TEX.particle("gold"), 0xffd93d, "star");
   generateParticle(scene, TEX.particle("teal"), 0x6bcb77, "diamond");
   generateParticle(scene, TEX.particle("white"), 0xffffff, "star");
   generateParticle(scene, TEX.particle("pink"), 0xff8fa3, "diamond");
+
   for (const fish of FISH_SPECIES) {
     generateFishTexture(scene, TEX.fish(fish.id), fish.bodyLength, fish.colors);
   }
+
+  generateCharacterLegs(scene, TEX.charLegs);
+  generateCharacterTorso(scene, TEX.charTorso);
+  generateCharacterHead(scene, TEX.charHead("neutral"), "neutral");
+  generateCharacterHead(scene, TEX.charHead("smile"), "smile");
+  generateCharacterHead(scene, TEX.charHead("shocked"), "shocked");
+  generateCharacterHead(scene, TEX.charHead("stars"), "stars");
+  generateCharacterArmRod(scene, TEX.charArmRod);
+
+  for (const rod of RODS) generateRodIcon(scene, TEX.rodIcon(rod.id), ROD_ICON_COLORS[rod.id] ?? 0xffffff);
+  generateCoinIcon(scene, TEX.coin);
+  generateLockIcon(scene, TEX.lock);
 }

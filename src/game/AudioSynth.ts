@@ -103,6 +103,17 @@ export class AudioSynth {
     osc.stop(ctx.currentTime + 0.14);
   }
 
+  /** Bright chime when coins are earned from a sale. */
+  coinChime(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const master = ctx.createGain();
+    master.gain.value = 0.28;
+    master.connect(ctx.destination);
+    this.tone(1046.5, 0, 0.1, "square", 0.5, ctx, master);
+    this.tone(1568, 0.05, 0.12, "square", 0.4, ctx, master);
+  }
+
   /** Upbeat jingle on a landed catch. */
   catchJingle(): void {
     const ctx = this.ensureContext();
