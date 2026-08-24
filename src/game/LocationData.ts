@@ -18,6 +18,13 @@ export interface LocationPalette {
   dockWoodDark: number;
 }
 
+export interface LocationDecor {
+  /** Lily pads floating near the dock — only makes sense on still, shallow water. */
+  lilyPads: boolean;
+  /** Foreground pines framing the left/right edges — only makes sense somewhere enclosed by forest. */
+  edgeTrees: boolean;
+}
+
 export interface LocationDef {
   id: string;
   name: string;
@@ -26,6 +33,7 @@ export interface LocationDef {
   maxRarity: Rarity;
   palette: LocationPalette;
   particle: ParticleStyle;
+  decor: LocationDecor;
 }
 
 export const LOCATIONS: LocationDef[] = [
@@ -50,6 +58,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x3e2618,
     },
     particle: "fireflies",
+    decor: { lilyPads: true, edgeTrees: true },
   },
   {
     id: "river-gorge",
@@ -72,6 +81,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x2e2013,
     },
     particle: "mist",
+    decor: { lilyPads: false, edgeTrees: false },
   },
   {
     id: "ocean-pier",
@@ -94,6 +104,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x40311f,
     },
     particle: "gulls",
+    decor: { lilyPads: false, edgeTrees: false },
   },
   {
     id: "deep-abyss",
@@ -116,6 +127,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x1a1410,
     },
     particle: "motes",
+    decor: { lilyPads: false, edgeTrees: false },
   },
   {
     id: "crystal-lake",
@@ -138,6 +150,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x352a38,
     },
     particle: "sparkle",
+    decor: { lilyPads: false, edgeTrees: false },
   },
 ];
 

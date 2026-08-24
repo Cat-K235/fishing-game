@@ -150,12 +150,88 @@ export function generateTreeline(scene: Phaser.Scene, key: string, w: number, h:
   refresh(scene, key);
 }
 
+/**
+ * A branch of foliage overhanging from a top corner of the screen — framing
+ * the pond like you're looking out from under the treeline. Origin (0, 0),
+ * meant for the top-left corner (mirror with flipX for the top-right).
+ * Foliage is dithered rather than flat-filled to match the rest of the
+ * scene's pixel-art texture instead of reading as smooth vector blobs.
+ */
+export function generateOverhangBranch(scene: Phaser.Scene, key: string, pal: LocationPalette): void {
+  const w = 116,
+    h = 150;
+  const ctx = createCtx(scene, key, w, h);
+
+  ctx.strokeStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
+  ctx.lineCap = "round";
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(0, 2);
+  ctx.quadraticCurveTo(w * 0.34, 6, w * 0.6, h * 0.4);
+  ctx.stroke();
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.28, 4);
+  ctx.quadraticCurveTo(w * 0.48, h * 0.16, w * 0.8, h * 0.56);
+  ctx.stroke();
+
+  const clumps: [number, number, number][] = [
+    [0.04, 0.02, 0.34],
+    [0.24, 0.1, 0.3],
+    [0.42, 0.22, 0.28],
+    [0.16, 0.26, 0.26],
+    [0.56, 0.36, 0.24],
+    [0.06, 0.4, 0.2],
+    [0.68, 0.5, 0.18],
+  ];
+
+  let seed = 31;
+  const next = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+
+  for (const [nx, ny, nr] of clumps) {
+    const cx = nx * w;
+    const cy = ny * h;
+    const r = nr * w;
+    const mix = 0.3 + next() * 0.4;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ditherRect(ctx, cx - r, cy - r, r * 2, r * 2, pal.treeline, pal.mountainHaze, mix, 3);
+    ctx.restore();
+
+    ctx.strokeStyle = rgbToCss(hexToRgb(pal.treeline), 0.9);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  refresh(scene, key);
+}
+
 export function generateWaterTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, size, size);
-  for (let y = 0; y < size; y++) {
-    const wave = Math.sin((y / size) * Math.PI * 2) * 0.15;
-    const mix = Phaser.Math.Clamp(0.35 + wave, 0, 1);
-    ditherRect(ctx, 0, y, size, 1, pal.waterDeep, pal.waterMid, mix, 1);
+  // ditherRect holds `mix` constant across a whole band, so with a single
+  // blend value per row the Bayer threshold comparison always resolves the
+  // same way within each 4-wide matrix cycle — that reads as clean repeating
+  // vertical bars instead of water texture. Blending in an x-dependent wave
+  // too (not just y) breaks that up into a mottled ripple instead.
+  const block = 4;
+  for (let y = 0; y < size; y += block) {
+    for (let x = 0; x < size; x += block) {
+      const bx = (x / block) % 4;
+      const by = (y / block) % 4;
+      const threshold = (BAYER_4X4[by][bx] + 0.5) / 16;
+      const wave = Math.sin((x / size) * Math.PI * 2.6 + (y / size) * Math.PI * 2) * 0.22;
+      const mix = Phaser.Math.Clamp(0.4 + wave, 0, 1);
+      ctx.fillStyle = rgbToCss(hexToRgb(mix > threshold ? pal.waterMid : pal.waterDeep));
+      ctx.fillRect(x, y, block, block);
+    }
   }
   refresh(scene, key);
 }
@@ -173,7 +249,7 @@ export function generateShimmerTile(scene: Phaser.Scene, key: string, size: numb
     const x = Math.floor(next() * size);
     const y = Math.floor(next() * size);
     const len = 2 + Math.floor(next() * 4);
-    ctx.fillRect(x, y, len, 1);
+    ctx.fillRect(x, y, len, 2);
   }
   refresh(scene, key);
 }
@@ -567,6 +643,7 @@ export const TEX = {
   sky: (loc: string) => `tex-sky-${loc}`,
   mountains: (loc: string) => `tex-mountains-${loc}`,
   treeline: (loc: string) => `tex-treeline-${loc}`,
+  overhangBranch: (loc: string) => `tex-overhang-${loc}`,
   water: (loc: string) => `tex-water-${loc}`,
   shimmer: (loc: string) => `tex-shimmer-${loc}`,
   ambient: (loc: string) => `tex-ambient-${loc}`,
@@ -598,6 +675,7 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
     generateSky(scene, TEX.sky(loc.id), w, Math.round(h * 0.34), loc.palette);
     generateMountains(scene, TEX.mountains(loc.id), w, 60, loc.palette);
     generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
+    generateOverhangBranch(scene, TEX.overhangBranch(loc.id), loc.palette);
     generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
     generateShimmerTile(scene, TEX.shimmer(loc.id), 48, loc.palette);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);

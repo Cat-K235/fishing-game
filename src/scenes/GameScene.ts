@@ -155,12 +155,14 @@ export class GameScene extends Phaser.Scene {
 
     this.world.add([sky, mountains, treeline, this.waterTile, this.shimmerTile]);
 
+    if (loc.decor.edgeTrees) this.spawnOverhangBranches(loc);
+
     this.spawnAmbientFish(loc);
     for (const f of this.ambientFish) this.world.add(f.sprite);
 
     this.lilyLayer = this.add.container(0, 0);
     this.world.add(this.lilyLayer);
-    this.spawnLilyPads();
+    if (loc.decor.lilyPads) this.spawnLilyPads();
 
     this.spawnAmbientParticles(loc);
     for (const p of this.ambientParticles) this.world.add(p.sprite);
@@ -199,19 +201,35 @@ export class GameScene extends Phaser.Scene {
     this.hudPrompt.setText("TAP THE WATER TO CAST");
   }
 
+  // Hand-placed so the composition stays deliberate — clustered near the
+  // banks on both sides, clear of the center where casts usually land.
+  private static readonly LILY_LAYOUT: { xr: number; yr: number; variant: number; scale: number; seed: number }[] = [
+    { xr: 0.06, yr: 0.86, variant: 0, scale: 1.15, seed: 10 },
+    { xr: 0.14, yr: 0.94, variant: 1, scale: 0.95, seed: 40 },
+    { xr: 0.09, yr: 0.75, variant: 2, scale: 0.85, seed: 70 },
+    { xr: 0.88, yr: 0.88, variant: 1, scale: 1.1, seed: 130 },
+    { xr: 0.94, yr: 0.78, variant: 2, scale: 0.9, seed: 190 },
+    { xr: 0.8, yr: 0.96, variant: 0, scale: 0.8, seed: 250 },
+  ];
+
   private spawnLilyPads(): void {
-    const count = 6;
-    for (let i = 0; i < count; i++) {
-      const variant = i % 3;
-      const x = 20 + Math.random() * (WORLD_W - 40);
-      const y = WATER_BOTTOM - 30 - Math.random() * 70;
-      const pad = this.add.image(x, y, TEX.lilyPad(variant));
-      pad.setScale(0.9 + Math.random() * 0.5);
+    for (const spot of GameScene.LILY_LAYOUT) {
+      const x = spot.xr * WORLD_W;
+      const y = WATER_TOP + spot.yr * (WATER_BOTTOM - WATER_TOP);
+      const pad = this.add.image(x, y, TEX.lilyPad(spot.variant));
+      pad.setScale(spot.scale);
       pad.setData("baseX", x);
       pad.setData("baseY", y);
-      pad.setData("seed", Math.random() * 1000);
+      pad.setData("seed", spot.seed);
       this.lilyLayer.add(pad);
     }
+  }
+
+  private spawnOverhangBranches(loc: LocationDef): void {
+    const key = TEX.overhangBranch(loc.id);
+    const left = this.add.image(-4, -4, key).setOrigin(0, 0);
+    const right = this.add.image(WORLD_W + 4, -4, key).setOrigin(1, 0).setFlipX(true);
+    this.world.add([left, right]);
   }
 
   private spawnAmbientFish(loc: LocationDef): void {
