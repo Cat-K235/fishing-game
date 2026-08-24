@@ -214,22 +214,32 @@ export function generateOverhangBranch(scene: Phaser.Scene, key: string, pal: Lo
   refresh(scene, key);
 }
 
+/** Deterministic per-cell hash in [0, 1) — same inputs always give the same output, so the tile still repeats seamlessly. */
+function cellHash(x: number, y: number, seed: number): number {
+  let h = (x * 374761393 + y * 668265263 + seed * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 15), 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 3266489917);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
+}
+
 export function generateWaterTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, size, size);
-  // ditherRect holds `mix` constant across a whole band, so with a single
-  // blend value per row the Bayer threshold comparison always resolves the
-  // same way within each 4-wide matrix cycle — that reads as clean repeating
-  // vertical bars instead of water texture. Blending in an x-dependent wave
-  // too (not just y) breaks that up into a mottled ripple instead.
+  // An ordered (Bayer) dither reads as an obvious repeating grid once the
+  // cells are big enough to see — closer to a screen-door effect than
+  // water. Comparing a soft wave against per-cell hashed noise instead
+  // gives an irregular, hand-scattered speckle that still tiles cleanly
+  // (the hash is a pure function of cell coordinates). The mix range is
+  // also kept narrow so the two tones blend rather than one popping out.
   const block = 4;
   for (let y = 0; y < size; y += block) {
     for (let x = 0; x < size; x += block) {
-      const bx = (x / block) % 4;
-      const by = (y / block) % 4;
-      const threshold = (BAYER_4X4[by][bx] + 0.5) / 16;
-      const wave = Math.sin((x / size) * Math.PI * 2.6 + (y / size) * Math.PI * 2) * 0.22;
-      const mix = Phaser.Math.Clamp(0.4 + wave, 0, 1);
-      ctx.fillStyle = rgbToCss(hexToRgb(mix > threshold ? pal.waterMid : pal.waterDeep));
+      const cellX = x / block;
+      const cellY = y / block;
+      const wave = Math.sin((x / size) * Math.PI * 2.2 + (y / size) * Math.PI * 1.5) * 0.1;
+      const mix = Phaser.Math.Clamp(0.32 + wave, 0.15, 0.5);
+      const n = cellHash(cellX, cellY, 7);
+      ctx.fillStyle = rgbToCss(hexToRgb(n < mix ? pal.waterMid : pal.waterDeep));
       ctx.fillRect(x, y, block, block);
     }
   }
