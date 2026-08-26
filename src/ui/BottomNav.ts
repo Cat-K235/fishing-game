@@ -5,7 +5,7 @@ import { TEXT_STYLE } from "./BottomSheet";
 const NAV_H = 30;
 
 export class BottomNav extends Phaser.GameObjects.Container {
-  constructor(scene: Phaser.Scene, onShop: () => void, onSell: () => void, onMaps: () => void) {
+  constructor(scene: Phaser.Scene, items: [string, () => void][]) {
     super(scene, 0, WORLD_H - NAV_H);
     scene.add.existing(this);
     this.setDepth(45);
@@ -13,11 +13,6 @@ export class BottomNav extends Phaser.GameObjects.Container {
     const bg = scene.add.rectangle(WORLD_W / 2, NAV_H / 2, WORLD_W, NAV_H, 0x0c0e14, 0.72);
     this.add(bg);
 
-    const items: [string, () => void][] = [
-      ["SHOP", onShop],
-      ["SELL", onSell],
-      ["MAPS", onMaps],
-    ];
     const segW = WORLD_W / items.length;
     items.forEach(([label, cb], i) => {
       const cx = segW * i + segW / 2;

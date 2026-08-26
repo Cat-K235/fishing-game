@@ -1,4 +1,4 @@
-import { fishById, type FishSpecies } from "./FishData";
+import { fishById, rarityIndex, type FishSpecies } from "./FishData";
 import { LOCATIONS } from "./LocationData";
 
 export interface InventoryFish {
@@ -14,6 +14,12 @@ const KEYS = {
   equippedRod: "pixelfish.equippedRod",
   unlockedLocations: "pixelfish.unlockedLocations",
   currentLocation: "pixelfish.currentLocation",
+  discoveredFish: "pixelfish.discoveredFish",
+  totalCasts: "pixelfish.totalCasts",
+  totalCatches: "pixelfish.totalCatches",
+  totalSold: "pixelfish.totalSold",
+  bestRarityIndex: "pixelfish.bestRarityIndex",
+  claimedQuests: "pixelfish.claimedQuests",
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -37,6 +43,15 @@ export class Economy {
   unlockedLocationIds: string[];
   currentLocationId: string;
 
+  /** speciesId -> number of times caught. Presence in this map means "discovered". */
+  discoveredFish: Record<string, number>;
+  totalCasts: number;
+  totalCatches: number;
+  totalSold: number;
+  /** Highest rarity index ever landed — -1 until the first catch. */
+  bestRarityIndex: number;
+  claimedQuestIds: string[];
+
   constructor() {
     this.coins = readJson(KEYS.coins, 0);
     this.inventory = readJson(KEYS.inventory, []);
@@ -44,6 +59,13 @@ export class Economy {
     this.equippedRodId = readJson(KEYS.equippedRod, "twig");
     this.unlockedLocationIds = readJson(KEYS.unlockedLocations, [LOCATIONS[0].id]);
     this.currentLocationId = readJson(KEYS.currentLocation, LOCATIONS[0].id);
+
+    this.discoveredFish = readJson(KEYS.discoveredFish, {});
+    this.totalCasts = readJson(KEYS.totalCasts, 0);
+    this.totalCatches = readJson(KEYS.totalCatches, 0);
+    this.totalSold = readJson(KEYS.totalSold, 0);
+    this.bestRarityIndex = readJson(KEYS.bestRarityIndex, -1);
+    this.claimedQuestIds = readJson(KEYS.claimedQuests, []);
   }
 
   private saveCoins(): void {
@@ -66,11 +88,33 @@ export class Economy {
     return true;
   }
 
+  /** Adds a catch to the inventory and records it toward the Fishdex/quest stats. */
   addFish(speciesId: string): InventoryFish {
     const entry: InventoryFish = { uid: `${speciesId}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`, speciesId, caughtAt: Date.now() };
     this.inventory.push(entry);
     this.saveInventory();
+
+    this.discoveredFish[speciesId] = (this.discoveredFish[speciesId] ?? 0) + 1;
+    writeJson(KEYS.discoveredFish, this.discoveredFish);
+
+    this.totalCatches += 1;
+    writeJson(KEYS.totalCatches, this.totalCatches);
+
+    const species = fishById(speciesId);
+    if (species) {
+      const idx = rarityIndex(species.rarity);
+      if (idx > this.bestRarityIndex) {
+        this.bestRarityIndex = idx;
+        writeJson(KEYS.bestRarityIndex, this.bestRarityIndex);
+      }
+    }
+
     return entry;
+  }
+
+  recordCast(): void {
+    this.totalCasts += 1;
+    writeJson(KEYS.totalCasts, this.totalCasts);
   }
 
   /** Sells the given inventory entries (or the whole inventory if omitted) and returns the coins earned. */
@@ -81,7 +125,22 @@ export class Economy {
     this.inventory = this.inventory.filter((f) => !sellSet.has(f.uid));
     this.saveInventory();
     this.addCoins(earned);
+
+    this.totalSold += toSell.length;
+    writeJson(KEYS.totalSold, this.totalSold);
+
     return earned;
+  }
+
+  isQuestClaimed(id: string): boolean {
+    return this.claimedQuestIds.includes(id);
+  }
+
+  claimQuest(id: string, reward: number): void {
+    if (this.isQuestClaimed(id)) return;
+    this.claimedQuestIds.push(id);
+    writeJson(KEYS.claimedQuests, this.claimedQuestIds);
+    this.addCoins(reward);
   }
 
   inventoryWithSpecies(): { entry: InventoryFish; species: FishSpecies }[] {

@@ -6,6 +6,14 @@ export function rarityIndex(rarity: Rarity): number {
   return RARITY_ORDER.indexOf(rarity);
 }
 
+export const RARITY_COLORS: Record<Rarity, number> = {
+  common: 0x9aa0b4,
+  uncommon: 0x6bcb77,
+  rare: 0x8ecae6,
+  epic: 0xb98cf2,
+  legendary: 0xffd93d,
+};
+
 export interface FishSpecies {
   id: string;
   name: string;

@@ -3,20 +3,13 @@ import { BottomSheet, TEXT_STYLE, makeButton } from "./BottomSheet";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
 import { WORLD_W } from "../game/Constants";
+import { RARITY_COLORS } from "../game/FishData";
 
 const COLS = 3;
 const CELL_W = 108;
 const CELL_H = 96;
 const ROWS_PER_PAGE = 2;
 const PAGE_SIZE = COLS * ROWS_PER_PAGE;
-
-const RARITY_COLORS: Record<string, number> = {
-  common: 0x9aa0b4,
-  uncommon: 0x6bcb77,
-  rare: 0x8ecae6,
-  epic: 0xb98cf2,
-  legendary: 0xffd93d,
-};
 
 export class SellPanel extends BottomSheet {
   private selected = new Set<string>();

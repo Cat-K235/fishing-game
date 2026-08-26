@@ -460,10 +460,34 @@ export function generateFishTexture(scene: Phaser.Scene, key: string, length: nu
   drawFrame(0, 0.35);
   drawFrame(frameW, -0.35);
 
+  // The shapes above are smooth canvas curves — down- then up-sampling
+  // through a small intermediate canvas collapses that into visible
+  // square pixels (same colors, chunkier silhouette) without having to
+  // redraw every fish as a hand-placed pixel grid. Bigger fish get a
+  // larger block so the "pixel size" reads as roughly constant across
+  // species rather than tiny fish going nearly abstract.
+  const pixelFactor = Phaser.Math.Clamp(Math.round(length / 14), 2, 4);
+  pixelateCanvas(ctx, w, h, pixelFactor);
+
   refresh(scene, key);
   const tex = scene.textures.get(key);
   tex.add(0, 0, 0, 0, frameW, h);
   tex.add(1, 0, frameW, 0, frameW, h);
+}
+
+/** Downsamples then nearest-neighbor upsamples a canvas in place, turning smooth art into chunky pixels. */
+function pixelateCanvas(ctx: CanvasRenderingContext2D, w: number, h: number, factor: number): void {
+  const smallW = Math.max(1, Math.round(w / factor));
+  const smallH = Math.max(1, Math.round(h / factor));
+  const small = document.createElement("canvas");
+  small.width = smallW;
+  small.height = smallH;
+  const sctx = small.getContext("2d")!;
+  sctx.drawImage(ctx.canvas, 0, 0, w, h, 0, 0, smallW, smallH);
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(small, 0, 0, smallW, smallH, 0, 0, w, h);
 }
 
 // -------------------------------------------------------------- CHARACTER

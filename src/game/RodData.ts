@@ -8,7 +8,7 @@ export interface RodDef {
   cost: number;
   /** Multiplies cast arc speed — higher casts faster. */
   castSpeedMult: number;
-  /** <1 slows tension buildup, making the rod more forgiving under a fighting fish. */
+  /** <1 makes resting more effective (tension drains faster, less progress bleeds back to the fish). */
   tensionForgiveness: number;
   /** 0..~0.35 — skews the catch roll toward rarer fish. */
   rareBonusPct: number;
@@ -32,10 +32,18 @@ export function rodMaxRarityIndex(rod: RodDef): number {
   return rarityIndex(rod.maxRarity);
 }
 
+// Tension buildup while holding (tensionGainRate, pullTensionFactor) is
+// deliberately the SAME for every rod: holding the whole time — never
+// resting — must always eventually snap the line, on any rod, or the
+// core hold/release rhythm stops mattering (a better rod would let you
+// just hold through the whole fight with zero timing at all). Instead a
+// better rod pays off during the rest half: tension drains faster and
+// less progress bleeds back to the fish, so correct hold/release timing
+// gets more forgiving without the mechanic itself becoming optional.
 export function tuningForRod(rod: RodDef): ReelTuning {
   return {
     ...DEFAULT_TUNING,
-    tensionGainRate: DEFAULT_TUNING.tensionGainRate * rod.tensionForgiveness,
-    pullTensionFactor: DEFAULT_TUNING.pullTensionFactor * rod.tensionForgiveness,
+    tensionDecayRate: DEFAULT_TUNING.tensionDecayRate / rod.tensionForgiveness,
+    restRecoverRate: DEFAULT_TUNING.restRecoverRate * rod.tensionForgiveness,
   };
 }

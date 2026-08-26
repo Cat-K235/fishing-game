@@ -26,8 +26,10 @@ import { BottomNav } from "../ui/BottomNav";
 import { ShopPanel } from "../ui/ShopPanel";
 import { SellPanel } from "../ui/SellPanel";
 import { MapsPanel } from "../ui/MapsPanel";
+import { FishdexPanel } from "../ui/FishdexPanel";
+import { QuestsPanel } from "../ui/QuestsPanel";
 import { showToast } from "../ui/Toast";
-import { TEXT_STYLE } from "../ui/BottomSheet";
+import { BottomSheet, TEXT_STYLE } from "../ui/BottomSheet";
 
 type FishingState = "idle" | "casting" | "waiting" | "reeling" | "result";
 
@@ -104,6 +106,8 @@ export class GameScene extends Phaser.Scene {
   private shopPanel!: ShopPanel;
   private sellPanel!: SellPanel;
   private mapsPanel!: MapsPanel;
+  private fishdexPanel!: FishdexPanel;
+  private questsPanel!: QuestsPanel;
 
   constructor() {
     super("game");
@@ -335,17 +339,25 @@ export class GameScene extends Phaser.Scene {
       () => this.refreshCoins(),
       (locationId) => this.rebuildForLocation(locationId)
     );
-    new BottomNav(
-      this,
-      () => this.openPanel(this.shopPanel),
-      () => this.openPanel(this.sellPanel),
-      () => this.openPanel(this.mapsPanel)
-    );
+    this.fishdexPanel = new FishdexPanel(this, this.economy);
+    this.questsPanel = new QuestsPanel(this, this.economy, (reward) => this.onQuestClaimed(reward));
+
+    new BottomNav(this, [
+      ["SHOP", () => this.openPanel(this.shopPanel)],
+      ["SELL", () => this.openPanel(this.sellPanel)],
+      ["DEX", () => this.openPanel(this.fishdexPanel)],
+      ["QUESTS", () => this.openPanel(this.questsPanel)],
+      ["MAPS", () => this.openPanel(this.mapsPanel)],
+    ]);
   }
 
-  private openPanel(panel: ShopPanel | SellPanel | MapsPanel): void {
+  private allPanels(): BottomSheet[] {
+    return [this.shopPanel, this.sellPanel, this.mapsPanel, this.fishdexPanel, this.questsPanel];
+  }
+
+  private openPanel(panel: BottomSheet): void {
     if (this.state !== "idle") return;
-    for (const p of [this.shopPanel, this.sellPanel, this.mapsPanel]) if (p !== panel && p.isOpen) p.close();
+    for (const p of this.allPanels()) if (p !== panel && p.isOpen) p.close();
     panel.open();
   }
 
@@ -358,6 +370,13 @@ export class GameScene extends Phaser.Scene {
     this.audio.coinChime();
     this.telegram.haptic("light");
     this.animateCoinGain(earned);
+    this.spawnCoinBurst(16, 18);
+  }
+
+  private onQuestClaimed(reward: number): void {
+    this.audio.coinChime();
+    this.telegram.haptic("medium");
+    this.animateCoinGain(reward);
     this.spawnCoinBurst(16, 18);
   }
 
@@ -399,7 +418,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private anyPanelOpen(): boolean {
-    return this.shopPanel.isOpen || this.sellPanel.isOpen || this.mapsPanel.isOpen;
+    return this.allPanels().some((p) => p.isOpen);
   }
 
   // ----------------------------------------------------------------- CAST
@@ -412,6 +431,8 @@ export class GameScene extends Phaser.Scene {
       showToast(this, "YOUR ROD CAN'T HANDLE THESE WATERS", DOCK_TOP - 60, "#e63946");
       return;
     }
+
+    this.economy.recordCast();
 
     this.state = "casting";
     this.castElapsed = 0;
