@@ -58,17 +58,20 @@ interface AmbientParticle {
 
 const MUTED_KEY = "pixelfish.muted";
 
-// How far the bobber itself gets dragged underwater during a fight,
+// How far the hook/bobber itself gets dragged underwater during a fight,
 // indexed [just hooked, about to land] — it's being pulled down by the
-// fish, not floating obliviously at the surface the whole time.
-const BOBBER_DUNK_RANGE: [number, number] = [34, 2];
+// fish, not floating obliviously at the surface the whole time. This is
+// also exactly how far the second (underwater) line segment reaches.
+const HOOK_DEPTH_RANGE: [number, number] = [70, 4];
+// How soon after a bite the hook finishes sinking down to fight depth —
+// it drops in visibly rather than already being at depth the instant it
+// bites.
+const BITE_SINK_SECONDS = 0.35;
 
-// Hooked fish visibility over the reel fight, indexed [deepest, surfaced].
-// Offset from the (now also submerged) bobber. Deep = nearly invisible
-// and small (murky water), surfaced = fully visible and its full size —
-// the rise should read clearly, not just a shape bobbing at constant
-// visibility.
-const HOOKED_FISH_DEPTH_RANGE: [number, number] = [65, 4];
+// The hooked fish hangs just below the hook itself (plus its own wobble)
+// rather than tracking a large separate depth range — it should read as
+// attached to the line, not floating independently of it.
+const HOOKED_FISH_OFFSET_RANGE: [number, number] = [16, 3];
 const HOOKED_FISH_ALPHA_RANGE: [number, number] = [0.08, 1];
 const HOOKED_FISH_SCALE_RANGE: [number, number] = [0.45, 1.05];
 
@@ -119,6 +122,8 @@ export class GameScene extends Phaser.Scene {
   private reelTickAccum = 0;
   /** 0..1 — ramps up while the fish is actively resisting (not being held, fighting hard) and eases back down otherwise. */
   private hookedFishRunT = 0;
+  /** 0..1 — eases up right after a bite so the hook visibly sinks in rather than already being at depth. */
+  private biteSinkT = 0;
 
   private hudPrompt!: Phaser.GameObjects.Text;
   private catchCard!: Phaser.GameObjects.Container;
@@ -572,6 +577,7 @@ export class GameScene extends Phaser.Scene {
     this.fightSwaySeed = Math.random() * 100;
     this.reelTickAccum = 0;
     this.hookedFishRunT = 0;
+    this.biteSinkT = 0;
     this.tensionVisible = true;
 
     this.bobberY = this.castTo.y + 12;
@@ -580,7 +586,7 @@ export class GameScene extends Phaser.Scene {
 
     const fish = this.currentFish!;
     this.hookedFishSprite = this.add
-      .sprite(this.bobberX, this.bobberY + HOOKED_FISH_DEPTH_RANGE[0], TEX.fish(fish.id), 0)
+      .sprite(this.bobberX, this.bobberY, TEX.fish(fish.id), 0)
       .setScale(HOOKED_FISH_SCALE_RANGE[0])
       .setAlpha(HOOKED_FISH_ALPHA_RANGE[0])
       .setFlipX(true);
@@ -605,12 +611,22 @@ export class GameScene extends Phaser.Scene {
     const t = Phaser.Math.Clamp(this.reelState.progress / 100, 0, 1);
     const holding = this.input.activePointer.isDown;
 
+    // Right after the bite the hook is still essentially at the surface —
+    // it sinks down to fight depth over BITE_SINK_SECONDS rather than
+    // already being at depth on frame one, so there's a visible moment of
+    // the line paying out and the second (underwater) segment growing in.
+    this.biteSinkT = Math.min(1, this.biteSinkT + dt / BITE_SINK_SECONDS);
+    const sinkEase = Phaser.Math.Easing.Cubic.Out(this.biteSinkT);
+
     // The fish is pulling the hook itself underwater, not just sitting at
     // the hook holding station at the surface — it only bobs back up as
-    // progress brings the fight closer to landed.
-    const bobberDunk = Phaser.Math.Linear(BOBBER_DUNK_RANGE[0], BOBBER_DUNK_RANGE[1], t);
-    this.bobberX = this.castTo.x + pull * 10;
-    this.bobberY = this.castTo.y + bobberDunk + Math.sin(this.time.now / 90) * Phaser.Math.Linear(0.6, 1.5, t);
+    // progress brings the fight closer to landed. Kept on a fixed X (no
+    // pull jitter) so the underwater line to it stays a clean straight
+    // drop — the fish sprite itself still swings side to side for the
+    // fight, the line and bobber don't need to.
+    const hookDepth = Phaser.Math.Linear(HOOK_DEPTH_RANGE[0], HOOK_DEPTH_RANGE[1], t) * sinkEase;
+    this.bobberX = this.castTo.x;
+    this.bobberY = this.castTo.y + hookDepth + Math.sin(this.time.now / 90) * Phaser.Math.Linear(0.6, 1.5, t);
     this.bobber.setAlpha(Phaser.Math.Linear(0.6, 1, t));
 
     if (this.hookedFishSprite) {
@@ -620,17 +636,19 @@ export class GameScene extends Phaser.Scene {
       const running = !holding && pullMagnitude > 0.35;
       this.hookedFishRunT = Phaser.Math.Clamp(this.hookedFishRunT + (running ? dt * 4 : -dt * 3), 0, 1);
 
-      const depthOffset = Phaser.Math.Linear(HOOKED_FISH_DEPTH_RANGE[0], HOOKED_FISH_DEPTH_RANGE[1], t) + this.hookedFishRunT * 24;
+      // The fish hangs just below the hook itself — it's attached to the
+      // line, not floating off on its own independent depth.
+      const offset = (Phaser.Math.Linear(HOOKED_FISH_OFFSET_RANGE[0], HOOKED_FISH_OFFSET_RANGE[1], t) + this.hookedFishRunT * 24) * sinkEase;
       // Deep = barely visible and holding fairly still; only thrashes
       // visibly once it's close enough to the surface to see clearly, or
       // while actively running from the hook.
       const energy = Math.max(Phaser.Math.Linear(1, 4, t), this.hookedFishRunT * 6);
-      const wobble = Math.sin(this.fightT * (5 + this.hookedFishRunT * 4)) * energy;
+      const wobble = Math.sin(this.fightT * (5 + this.hookedFishRunT * 4)) * energy * sinkEase;
 
       const prevX = this.hookedFishSprite.x;
-      const nextX = this.bobberX + pull * (6 + this.hookedFishRunT * 10);
+      const nextX = this.bobberX + pull * (6 + this.hookedFishRunT * 10) * sinkEase;
       this.hookedFishSprite.x = nextX;
-      this.hookedFishSprite.y = this.bobberY + depthOffset + wobble;
+      this.hookedFishSprite.y = this.bobberY + offset + wobble;
       this.hookedFishSprite.setAlpha(Phaser.Math.Linear(HOOKED_FISH_ALPHA_RANGE[0], HOOKED_FISH_ALPHA_RANGE[1], t));
       this.hookedFishSprite.setScale(Phaser.Math.Linear(HOOKED_FISH_SCALE_RANGE[0], HOOKED_FISH_SCALE_RANGE[1], t));
       // Face the direction it's actually moving, not whichever way the
@@ -914,13 +932,28 @@ export class GameScene extends Phaser.Scene {
 
   private drawLine(): void {
     this.line.clear();
-    this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
     const tip = this.fisherman.getRodTipWorld();
     tip.x -= this.world.x;
     tip.y -= this.world.y;
+
+    // The line always ran from the rod tip straight to the bobber. Now that
+    // the bobber can be dunked below the surface, that's split in two: the
+    // familiar line down to where it enters the water at the cast spot,
+    // then a second, straight vertical drop from there down to the
+    // (possibly submerged) bobber — which is where the hooked fish is.
+    const surfaceX = this.castTo.x;
+    const surfaceY = this.castTo.y;
+
+    this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
     this.line.beginPath();
     this.line.moveTo(tip.x, tip.y);
-    this.line.lineTo(this.bobberX, this.bobberY);
+    this.line.lineTo(surfaceX, surfaceY);
+    this.line.strokePath();
+
+    this.line.lineStyle(1.5, 0xbfe9e8, 0.5);
+    this.line.beginPath();
+    this.line.moveTo(surfaceX, surfaceY);
+    this.line.lineTo(surfaceX, this.bobberY);
     this.line.strokePath();
   }
 
