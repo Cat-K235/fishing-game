@@ -936,25 +936,34 @@ export class GameScene extends Phaser.Scene {
     tip.x -= this.world.x;
     tip.y -= this.world.y;
 
-    // The line always ran from the rod tip straight to the bobber. Now that
-    // the bobber can be dunked below the surface, that's split in two: the
-    // familiar line down to where it enters the water at the cast spot,
-    // then a second, straight vertical drop from there down to the
-    // (possibly submerged) bobber — which is where the hooked fish is.
-    const surfaceX = this.castTo.x;
-    const surfaceY = this.castTo.y;
+    // The underwater split only makes sense once a fish is actually
+    // dragging the hook down below a fixed surface point. During the cast
+    // arc and the idle wait, the bobber itself IS the line's endpoint —
+    // splitting the line against the (not-yet-reached) cast target during
+    // flight made it look like the bobber flew in on its own while a
+    // second line stretched from the target back up to it.
+    if (this.state === "reeling") {
+      const surfaceX = this.castTo.x;
+      const surfaceY = this.castTo.y;
 
-    this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
-    this.line.beginPath();
-    this.line.moveTo(tip.x, tip.y);
-    this.line.lineTo(surfaceX, surfaceY);
-    this.line.strokePath();
+      this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
+      this.line.beginPath();
+      this.line.moveTo(tip.x, tip.y);
+      this.line.lineTo(surfaceX, surfaceY);
+      this.line.strokePath();
 
-    this.line.lineStyle(1.5, 0xbfe9e8, 0.5);
-    this.line.beginPath();
-    this.line.moveTo(surfaceX, surfaceY);
-    this.line.lineTo(surfaceX, this.bobberY);
-    this.line.strokePath();
+      this.line.lineStyle(1.5, 0xbfe9e8, 0.5);
+      this.line.beginPath();
+      this.line.moveTo(surfaceX, surfaceY);
+      this.line.lineTo(surfaceX, this.bobberY);
+      this.line.strokePath();
+    } else {
+      this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
+      this.line.beginPath();
+      this.line.moveTo(tip.x, tip.y);
+      this.line.lineTo(this.bobberX, this.bobberY);
+      this.line.strokePath();
+    }
   }
 
   private updateAmbientFish(dt: number): void {
