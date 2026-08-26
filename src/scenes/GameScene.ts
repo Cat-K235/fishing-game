@@ -58,6 +58,14 @@ interface AmbientParticle {
 
 const MUTED_KEY = "pixelfish.muted";
 
+// Hooked fish visibility over the reel fight, indexed [deepest, surfaced].
+// Deep = nearly invisible and small (murky water), surfaced = fully
+// visible and its full size — the rise should read clearly, not just a
+// shape bobbing at constant visibility.
+const HOOKED_FISH_DEPTH_RANGE: [number, number] = [90, 6];
+const HOOKED_FISH_ALPHA_RANGE: [number, number] = [0.08, 1];
+const HOOKED_FISH_SCALE_RANGE: [number, number] = [0.45, 1.05];
+
 export class GameScene extends Phaser.Scene {
   private telegram = new TelegramService();
   private audio = new AudioSynth();
@@ -562,9 +570,9 @@ export class GameScene extends Phaser.Scene {
 
     const fish = this.currentFish!;
     this.hookedFishSprite = this.add
-      .sprite(this.bobberX, this.bobberY + 55, TEX.fish(fish.id), 0)
-      .setScale(0.7)
-      .setAlpha(0.35)
+      .sprite(this.bobberX, this.bobberY + HOOKED_FISH_DEPTH_RANGE[0], TEX.fish(fish.id), 0)
+      .setScale(HOOKED_FISH_SCALE_RANGE[0])
+      .setAlpha(HOOKED_FISH_ALPHA_RANGE[0])
       .setFlipX(true);
     this.world.add(this.hookedFishSprite);
 
@@ -589,11 +597,14 @@ export class GameScene extends Phaser.Scene {
 
     if (this.hookedFishSprite) {
       const t = Phaser.Math.Clamp(this.reelState.progress / 100, 0, 1);
-      const depthOffset = Phaser.Math.Linear(55, 4, t);
+      const depthOffset = Phaser.Math.Linear(HOOKED_FISH_DEPTH_RANGE[0], HOOKED_FISH_DEPTH_RANGE[1], t);
+      // Deep = barely visible and holding fairly still; only thrashes
+      // visibly once it's close enough to the surface to see clearly.
+      const wobble = Math.sin(this.fightT * 5) * Phaser.Math.Linear(1, 4, t);
       this.hookedFishSprite.x = this.bobberX + pull * 6;
-      this.hookedFishSprite.y = this.bobberY + depthOffset + Math.sin(this.fightT * 4) * 3;
-      this.hookedFishSprite.setAlpha(Phaser.Math.Linear(0.35, 1, t));
-      this.hookedFishSprite.setScale(Phaser.Math.Linear(0.7, 1.05, t));
+      this.hookedFishSprite.y = this.bobberY + depthOffset + wobble;
+      this.hookedFishSprite.setAlpha(Phaser.Math.Linear(HOOKED_FISH_ALPHA_RANGE[0], HOOKED_FISH_ALPHA_RANGE[1], t));
+      this.hookedFishSprite.setScale(Phaser.Math.Linear(HOOKED_FISH_SCALE_RANGE[0], HOOKED_FISH_SCALE_RANGE[1], t));
       this.hookedFishSprite.setFlipX(pull < 0);
       this.hookedFishSprite.setFrame(Math.floor(this.fightT * 6) % 2 === 0 ? 0 : 1);
     }
@@ -891,9 +902,21 @@ export class GameScene extends Phaser.Scene {
 
       if (f.reactTimer > 0) {
         f.reactTimer -= dt;
+        // Ease the dart out over its duration instead of stopping at full
+        // speed, so there's no sudden halt when patrol resumes.
+        const damping = Math.pow(0.05, dt);
+        f.reactVX *= damping;
+        f.reactVY *= damping;
         f.x = Phaser.Math.Clamp(f.x + f.reactVX * dt, -20, WORLD_W + 20);
         f.y = Phaser.Math.Clamp(f.y + f.reactVY * dt, WATER_TOP + 12, WATER_BOTTOM - 12);
         f.sprite.setFlipX(f.reactVX < 0);
+
+        if (f.reactTimer <= 0) {
+          // Resume patrol from wherever the reaction left it rather than
+          // snapping back to its original anchor depth.
+          f.baseY = f.y;
+          f.swayT = 0;
+        }
       } else {
         f.x += f.dir * f.speed * dt;
         if (f.x < -20) {
