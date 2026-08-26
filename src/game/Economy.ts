@@ -12,6 +12,8 @@ const KEYS = {
   inventory: "pixelfish.inventory",
   ownedRods: "pixelfish.ownedRods",
   equippedRod: "pixelfish.equippedRod",
+  ownedBait: "pixelfish.ownedBait",
+  equippedBait: "pixelfish.equippedBait",
   unlockedLocations: "pixelfish.unlockedLocations",
   currentLocation: "pixelfish.currentLocation",
   discoveredFish: "pixelfish.discoveredFish",
@@ -40,6 +42,8 @@ export class Economy {
   inventory: InventoryFish[];
   ownedRodIds: string[];
   equippedRodId: string;
+  ownedBaitIds: string[];
+  equippedBaitId: string;
   unlockedLocationIds: string[];
   currentLocationId: string;
 
@@ -57,6 +61,8 @@ export class Economy {
     this.inventory = readJson(KEYS.inventory, []);
     this.ownedRodIds = readJson(KEYS.ownedRods, ["twig"]);
     this.equippedRodId = readJson(KEYS.equippedRod, "twig");
+    this.ownedBaitIds = readJson(KEYS.ownedBait, ["plain-worm"]);
+    this.equippedBaitId = readJson(KEYS.equippedBait, "plain-worm");
     this.unlockedLocationIds = readJson(KEYS.unlockedLocations, [LOCATIONS[0].id]);
     this.currentLocationId = readJson(KEYS.currentLocation, LOCATIONS[0].id);
 
@@ -167,6 +173,23 @@ export class Economy {
   equipRod(rodId: string): void {
     this.equippedRodId = rodId;
     writeJson(KEYS.equippedRod, rodId);
+  }
+
+  ownsBait(baitId: string): boolean {
+    return this.ownedBaitIds.includes(baitId);
+  }
+
+  buyBait(baitId: string, cost: number): boolean {
+    if (this.ownsBait(baitId)) return true;
+    if (!this.spendCoins(cost)) return false;
+    this.ownedBaitIds.push(baitId);
+    writeJson(KEYS.ownedBait, this.ownedBaitIds);
+    return true;
+  }
+
+  equipBait(baitId: string): void {
+    this.equippedBaitId = baitId;
+    writeJson(KEYS.equippedBait, baitId);
   }
 
   isLocationUnlocked(locationId: string): boolean {

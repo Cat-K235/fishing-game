@@ -19,10 +19,11 @@ import { stepReel, type ReelState } from "../game/ReelMath";
 import { AudioSynth } from "../game/AudioSynth";
 import { TelegramService } from "../telegram/TelegramService";
 import { Economy } from "../game/Economy";
-import { rodById, tuningForRod, type RodDef } from "../game/RodData";
+import { rodById, type RodDef } from "../game/RodData";
+import { baitById, tuningForBait, type BaitDef } from "../game/BaitData";
 import { locationById, locationRarityBounds, effectiveMaxRarityIndex, type LocationDef, type ParticleStyle } from "../game/LocationData";
 import { Fisherman, expressionForRarity } from "../game/Character";
-import { BottomNav } from "../ui/BottomNav";
+import { SideMenu } from "../ui/SideMenu";
 import { ShopPanel } from "../ui/ShopPanel";
 import { SellPanel } from "../ui/SellPanel";
 import { MapsPanel } from "../ui/MapsPanel";
@@ -42,6 +43,10 @@ interface AmbientFish {
   dir: 1 | -1;
   speed: number;
   swayT: number;
+  /** Seconds left of a hook-reaction override (flee/investigate) before it resumes normal patrol. */
+  reactTimer: number;
+  reactVX: number;
+  reactVY: number;
 }
 
 interface AmbientParticle {
@@ -58,7 +63,9 @@ export class GameScene extends Phaser.Scene {
   private audio = new AudioSynth();
   private economy!: Economy;
   private location!: LocationDef;
+  /** Cosmetic only — what the character holds. Gameplay stats come from `bait`. */
   private rod!: RodDef;
+  private bait!: BaitDef;
 
   private world!: Phaser.GameObjects.Container;
   private swayT = 0;
@@ -76,6 +83,8 @@ export class GameScene extends Phaser.Scene {
   private bobber!: Phaser.GameObjects.Sprite;
   private bobberX = DOCK_CENTER_X;
   private bobberY = PLAYER_Y;
+  /** The hooked fish, visible rising toward the bobber as reel progress climbs. */
+  private hookedFishSprite: Phaser.GameObjects.Sprite | null = null;
 
   private rippleGroup!: Phaser.GameObjects.Group;
   private flashRect!: Phaser.GameObjects.Rectangle;
@@ -108,6 +117,7 @@ export class GameScene extends Phaser.Scene {
   private mapsPanel!: MapsPanel;
   private fishdexPanel!: FishdexPanel;
   private questsPanel!: QuestsPanel;
+  private sideMenu!: SideMenu;
 
   constructor() {
     super("game");
@@ -119,9 +129,10 @@ export class GameScene extends Phaser.Scene {
     this.economy = new Economy();
     this.location = locationById(this.economy.currentLocationId);
     this.rod = rodById(this.economy.equippedRodId);
+    this.bait = baitById(this.economy.equippedBaitId);
 
     this.buildWorld(this.location);
-    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y);
+    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y, this.rod.id);
     this.world.add(this.fisherman);
 
     this.buildHud();
@@ -199,7 +210,7 @@ export class GameScene extends Phaser.Scene {
     this.state = "idle";
     this.currentFish = null;
     this.buildWorld(this.location);
-    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y);
+    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y, this.rod.id);
     this.world.add(this.fisherman);
     this.locationText.setText(this.location.name);
     this.hudPrompt.setText("TAP THE WATER TO CAST");
@@ -257,7 +268,30 @@ export class GameScene extends Phaser.Scene {
         dir,
         speed: 10 + Math.random() * 14,
         swayT: Math.random() * 10,
+        reactTimer: 0,
+        reactVX: 0,
+        reactVY: 0,
       });
+    }
+  }
+
+  /** A splash nearby spooks or draws the curiosity of ambient fish — a brief reaction before they resume patrol. */
+  private reactAmbientFish(x: number, y: number): void {
+    const radius = 90;
+    for (const f of this.ambientFish) {
+      const dx = f.x - x;
+      const dy = f.y - y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > radius) continue;
+
+      const curious = Math.random() < 0.4;
+      const dirX = dist > 0.001 ? dx / dist : Math.random() > 0.5 ? 1 : -1;
+      const dirY = dist > 0.001 ? dy / dist : 0;
+      const speed = 45 + Math.random() * 30;
+      // curious fish dart toward the splash first, fleeing fish dart straight away
+      f.reactVX = curious ? -dirX * speed * 0.6 : dirX * speed;
+      f.reactVY = curious ? -dirY * speed * 0.6 : dirY * speed;
+      f.reactTimer = curious ? 0.7 + Math.random() * 0.3 : 0.9 + Math.random() * 0.5;
     }
   }
 
@@ -330,6 +364,8 @@ export class GameScene extends Phaser.Scene {
   private buildPanels(): void {
     this.shopPanel = new ShopPanel(this, this.economy, () => {
       this.rod = rodById(this.economy.equippedRodId);
+      this.bait = baitById(this.economy.equippedBaitId);
+      this.fisherman.setRod(this.rod.id);
       this.refreshCoins();
     });
     this.sellPanel = new SellPanel(this, this.economy, (earned) => this.onFishSold(earned));
@@ -342,7 +378,7 @@ export class GameScene extends Phaser.Scene {
     this.fishdexPanel = new FishdexPanel(this, this.economy);
     this.questsPanel = new QuestsPanel(this, this.economy, (reward) => this.onQuestClaimed(reward));
 
-    new BottomNav(this, [
+    this.sideMenu = new SideMenu(this, [
       ["SHOP", () => this.openPanel(this.shopPanel)],
       ["SELL", () => this.openPanel(this.sellPanel)],
       ["DEX", () => this.openPanel(this.fishdexPanel)],
@@ -425,14 +461,15 @@ export class GameScene extends Phaser.Scene {
 
   private startCast(px: number, py: number): void {
     const bounds = locationRarityBounds(this.location);
-    const maxIdx = effectiveMaxRarityIndex(this.location, this.rod);
+    const maxIdx = effectiveMaxRarityIndex(this.location, this.bait);
     const pool = getLocationPool(this.location.id, bounds.min, maxIdx);
     if (pool.length === 0) {
-      showToast(this, "YOUR ROD CAN'T HANDLE THESE WATERS", DOCK_TOP - 60, "#e63946");
+      showToast(this, "YOUR BAIT CAN'T HANDLE THESE WATERS", DOCK_TOP - 60, "#e63946");
       return;
     }
 
     this.economy.recordCast();
+    this.sideMenu.collapse();
 
     this.state = "casting";
     this.castElapsed = 0;
@@ -441,9 +478,9 @@ export class GameScene extends Phaser.Scene {
     const ty = Phaser.Math.Clamp(py, CAST_MIN_Y, CAST_MAX_Y);
     this.castTo = { x: tx, y: ty };
     const baseDuration = 0.32 + (Math.abs(ty - this.castFrom.y) / (CAST_MAX_Y - CAST_MIN_Y)) * 0.28;
-    this.castDuration = baseDuration / this.rod.castSpeedMult;
+    this.castDuration = baseDuration / this.bait.castSpeedMult;
 
-    this.currentFish = pickWeightedFish(pool, this.rod.rareBonusPct);
+    this.currentFish = pickWeightedFish(pool, this.bait.rareBonusPct);
 
     this.bobber.setVisible(true);
     this.bobber.setScale(1);
@@ -475,6 +512,7 @@ export class GameScene extends Phaser.Scene {
     this.spawnRipple(this.bobberX, this.bobberY, 0);
     this.spawnRipple(this.bobberX, this.bobberY, 120);
     this.audio.plop();
+    this.reactAmbientFish(this.bobberX, this.bobberY);
 
     const fish = this.currentFish;
     this.waitTimer = fish ? Phaser.Math.FloatBetween(fish.biteDelay[0], fish.biteDelay[1]) : 999;
@@ -521,6 +559,14 @@ export class GameScene extends Phaser.Scene {
     this.bobber.setScale(0.8, 1.3);
     this.tweens.add({ targets: this.bobber, scaleX: 1, scaleY: 1, duration: 160, ease: "Back.Out" });
 
+    const fish = this.currentFish!;
+    this.hookedFishSprite = this.add
+      .sprite(this.bobberX, this.bobberY + 55, TEX.fish(fish.id), 0)
+      .setScale(0.7)
+      .setAlpha(0.35)
+      .setFlipX(true);
+    this.world.add(this.hookedFishSprite);
+
     this.fisherman.startReelLoop();
     this.cameras.main.shake(120, 0.006);
     this.audio.bitePing();
@@ -540,12 +586,23 @@ export class GameScene extends Phaser.Scene {
     this.bobberX = this.castTo.x + pull * 10;
     this.bobberY = this.castTo.y + 10 + Math.sin(this.time.now / 90) * 1.5;
 
+    if (this.hookedFishSprite) {
+      const t = Phaser.Math.Clamp(this.reelState.progress / 100, 0, 1);
+      const depthOffset = Phaser.Math.Linear(55, 4, t);
+      this.hookedFishSprite.x = this.bobberX + pull * 6;
+      this.hookedFishSprite.y = this.bobberY + depthOffset + Math.sin(this.fightT * 4) * 3;
+      this.hookedFishSprite.setAlpha(Phaser.Math.Linear(0.35, 1, t));
+      this.hookedFishSprite.setScale(Phaser.Math.Linear(0.7, 1.05, t));
+      this.hookedFishSprite.setFlipX(pull < 0);
+      this.hookedFishSprite.setFrame(Math.floor(this.fightT * 6) % 2 === 0 ? 0 : 1);
+    }
+
     const holding = this.input.activePointer.isDown;
 
     if (this.reelGrace > 0) {
       this.reelGrace -= dt;
     } else {
-      const { state, outcome } = stepReel(this.reelState, dt, holding, pull, fish.fightStrength, tuningForRod(this.rod));
+      const { state, outcome } = stepReel(this.reelState, dt, holding, pull, fish.fightStrength, tuningForBait(this.bait));
       this.reelState = state;
 
       if (holding) {
@@ -612,7 +669,11 @@ export class GameScene extends Phaser.Scene {
     const endY = PLAYER_Y - 46;
 
     this.bobber.setVisible(false);
-    const fishSprite = this.add.sprite(startX, startY, TEX.fish(fish.id), 0).setScale(1.6);
+    // Reuse the fish that's been visibly rising toward the hook rather than
+    // popping a fresh sprite in — it's the same fish leaping out now.
+    const fishSprite = this.hookedFishSprite ?? this.add.sprite(startX, startY, TEX.fish(fish.id), 0);
+    this.hookedFishSprite = null;
+    fishSprite.setPosition(startX, startY).setScale(1.6).setAlpha(1).setFlipX(false);
     this.world.add(fishSprite);
 
     const duration = 480;
@@ -678,6 +739,7 @@ export class GameScene extends Phaser.Scene {
     this.world.y = 0;
     this.hudPrompt.setText("LINE SNAPPED!");
     this.fisherman.playSnapFlinch();
+    this.dismissHookedFish();
 
     const snapBackX = DOCK_CENTER_X;
     const snapBackY = PLAYER_Y;
@@ -714,12 +776,29 @@ export class GameScene extends Phaser.Scene {
     this.world.y = 0;
     this.fisherman.stopReelLoop();
     showToast(this, "GOT AWAY...", DOCK_TOP - 40);
+    this.dismissHookedFish();
 
     this.spawnRipple(this.bobberX, this.bobberY, 0);
     this.bobber.setVisible(false);
     this.telegram.haptic("light");
 
     this.time.delayedCall(750, () => this.resetToIdle());
+  }
+
+  /** The hooked fish darts off and fades out — used when the line snaps or the fish escapes. */
+  private dismissHookedFish(): void {
+    const sprite = this.hookedFishSprite;
+    if (!sprite) return;
+    this.hookedFishSprite = null;
+    this.tweens.add({
+      targets: sprite,
+      x: sprite.x + (Math.random() > 0.5 ? 60 : -60),
+      y: sprite.y + 30,
+      alpha: 0,
+      duration: 400,
+      ease: "Cubic.In",
+      onComplete: () => sprite.destroy(),
+    });
   }
 
   private burstParticles(x: number, y: number, big: boolean): void {
@@ -808,17 +887,26 @@ export class GameScene extends Phaser.Scene {
   private updateAmbientFish(dt: number): void {
     for (const f of this.ambientFish) {
       f.swayT += dt;
-      f.x += f.dir * f.speed * dt;
-      if (f.x < -20) {
-        f.x = -20;
-        f.dir = 1;
-        f.sprite.setFlipX(false);
-      } else if (f.x > WORLD_W + 20) {
-        f.x = WORLD_W + 20;
-        f.dir = -1;
-        f.sprite.setFlipX(true);
+
+      if (f.reactTimer > 0) {
+        f.reactTimer -= dt;
+        f.x = Phaser.Math.Clamp(f.x + f.reactVX * dt, -20, WORLD_W + 20);
+        f.y = Phaser.Math.Clamp(f.y + f.reactVY * dt, WATER_TOP + 12, WATER_BOTTOM - 12);
+        f.sprite.setFlipX(f.reactVX < 0);
+      } else {
+        f.x += f.dir * f.speed * dt;
+        if (f.x < -20) {
+          f.x = -20;
+          f.dir = 1;
+          f.sprite.setFlipX(false);
+        } else if (f.x > WORLD_W + 20) {
+          f.x = WORLD_W + 20;
+          f.dir = -1;
+          f.sprite.setFlipX(true);
+        }
+        f.y = f.baseY + Math.sin(f.swayT * 0.8) * 6;
       }
-      f.y = f.baseY + Math.sin(f.swayT * 0.8) * 6;
+
       f.sprite.setPosition(f.x, f.y);
       f.sprite.setFrame(Math.floor(f.swayT * 3) % 2 === 0 ? 0 : 1);
     }

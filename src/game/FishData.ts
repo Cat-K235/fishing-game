@@ -93,6 +93,34 @@ export const FISH_SPECIES: FishSpecies[] = [
     colors: { body: 0x2fbfa8, belly: 0xd8f5ee, fin: 0xff8fa3 },
     sellValue: 95,
   },
+  {
+    id: "mudskipper",
+    name: "Mudskipper",
+    rarity: "common",
+    locationId: "mossy-pond",
+    weight: 24,
+    fightStrength: 0.3,
+    fightSpeed: 2.2,
+    depth: 0.15,
+    biteDelay: [0.9, 2.2],
+    bodyLength: 18,
+    colors: { body: 0x7a8a4f, belly: 0xd4dba0, fin: 0x54622f },
+    sellValue: 10,
+  },
+  {
+    id: "copper-bream",
+    name: "Copper Bream",
+    rarity: "uncommon",
+    locationId: "mossy-pond",
+    weight: 14,
+    fightStrength: 0.48,
+    fightSpeed: 1.5,
+    depth: 0.45,
+    biteDelay: [1.5, 3.4],
+    bodyLength: 26,
+    colors: { body: 0xb5651d, belly: 0xe8b98a, fin: 0x7a3d0f },
+    sellValue: 28,
+  },
 
   // ---- River Gorge (common..epic) ----
   {
@@ -165,6 +193,34 @@ export const FISH_SPECIES: FishSpecies[] = [
     colors: { body: 0x4a2f6b, belly: 0xb79ce0, fin: 0xffb703 },
     sellValue: 320,
   },
+  {
+    id: "boulder-trout",
+    name: "Boulder Trout",
+    rarity: "common",
+    locationId: "river-gorge",
+    weight: 30,
+    fightStrength: 0.34,
+    fightSpeed: 1.2,
+    depth: 0.4,
+    biteDelay: [1, 2.6],
+    bodyLength: 24,
+    colors: { body: 0x6a7a6a, belly: 0xc9d4c4, fin: 0x445044 },
+    sellValue: 14,
+  },
+  {
+    id: "fern-pike",
+    name: "Fern Pike",
+    rarity: "rare",
+    locationId: "river-gorge",
+    weight: 8,
+    fightStrength: 0.72,
+    fightSpeed: 1.9,
+    depth: 0.5,
+    biteDelay: [1.9, 3.9],
+    bodyLength: 34,
+    colors: { body: 0x3f7a4a, belly: 0xc7e8c0, fin: 0x24502c },
+    sellValue: 115,
+  },
 
   // ---- Ocean Pier (uncommon..epic) ----
   {
@@ -223,6 +279,34 @@ export const FISH_SPECIES: FishSpecies[] = [
     colors: { body: 0x1d3a5f, belly: 0xa8d0f0, fin: 0x0c1f38 },
     sellValue: 340,
   },
+  {
+    id: "silverfin-tuna",
+    name: "Silverfin Tuna",
+    rarity: "uncommon",
+    locationId: "ocean-pier",
+    weight: 18,
+    fightStrength: 0.5,
+    fightSpeed: 2.2,
+    depth: 0.45,
+    biteDelay: [1.3, 3],
+    bodyLength: 28,
+    colors: { body: 0x6a7f96, belly: 0xe8f0fa, fin: 0x3d4f66 },
+    sellValue: 42,
+  },
+  {
+    id: "coral-grouper",
+    name: "Coral Grouper",
+    rarity: "rare",
+    locationId: "ocean-pier",
+    weight: 8,
+    fightStrength: 0.65,
+    fightSpeed: 1.2,
+    depth: 0.7,
+    biteDelay: [1.8, 3.8],
+    bodyLength: 34,
+    colors: { body: 0xd6693f, belly: 0xffe0c0, fin: 0x7a3418 },
+    sellValue: 135,
+  },
 
   // ---- Deep Abyss (rare..legendary) ----
   {
@@ -266,6 +350,34 @@ export const FISH_SPECIES: FishSpecies[] = [
     bodyLength: 54,
     colors: { body: 0x0f1a2e, belly: 0x2f5c8a, fin: 0x5ef2c8 },
     sellValue: 900,
+  },
+  {
+    id: "ghost-eel",
+    name: "Ghost Eel",
+    rarity: "rare",
+    locationId: "deep-abyss",
+    weight: 12,
+    fightStrength: 0.58,
+    fightSpeed: 1.4,
+    depth: 0.75,
+    biteDelay: [1.7, 3.7],
+    bodyLength: 38,
+    colors: { body: 0x3a4a52, belly: 0x9ab4b8, fin: 0xd8f0f2 },
+    sellValue: 160,
+  },
+  {
+    id: "obsidian-ray",
+    name: "Obsidian Ray",
+    rarity: "epic",
+    locationId: "deep-abyss",
+    weight: 5,
+    fightStrength: 0.85,
+    fightSpeed: 1,
+    depth: 0.85,
+    biteDelay: [2.3, 4.5],
+    bodyLength: 44,
+    colors: { body: 0x100e18, belly: 0x2a2438, fin: 0x8fe3ff },
+    sellValue: 400,
   },
 
   // ---- Crystal Lake (epic..legendary) ----
@@ -311,6 +423,34 @@ export const FISH_SPECIES: FishSpecies[] = [
     colors: { body: 0xfff0a8, belly: 0xffffff, fin: 0x8ee0e8 },
     sellValue: 820,
   },
+  {
+    id: "aurora-betta",
+    name: "Aurora Betta",
+    rarity: "epic",
+    locationId: "crystal-lake",
+    weight: 6,
+    fightStrength: 0.78,
+    fightSpeed: 2.3,
+    depth: 0.3,
+    biteDelay: [1.9, 3.8],
+    bodyLength: 28,
+    colors: { body: 0xff8fd6, belly: 0xffe0f5, fin: 0x8ee0e8 },
+    sellValue: 320,
+  },
+  {
+    id: "starlight-sturgeon",
+    name: "Starlight Sturgeon",
+    rarity: "legendary",
+    locationId: "crystal-lake",
+    weight: 1.2,
+    fightStrength: 0.92,
+    fightSpeed: 1,
+    depth: 0.7,
+    biteDelay: [3, 5.5],
+    bodyLength: 52,
+    colors: { body: 0xd8d0f0, belly: 0xffffff, fin: 0xffd93d },
+    sellValue: 880,
+  },
 ];
 
 export function fishById(id: string): FishSpecies | undefined {
@@ -327,7 +467,7 @@ export function getLocationPool(locationId: string, minRarityIndex: number, maxR
 }
 
 /**
- * Weighted pick from a pool. `rareBonusPct` (0..~0.35, from the equipped rod)
+ * Weighted pick from a pool. `rareBonusPct` (0..~0.35, from the equipped bait)
  * multiplies each species' weight by (1 + rareBonusPct * rarityIndex), skewing
  * the roll toward rarer fish without changing which species are reachable.
  */

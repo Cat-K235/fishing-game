@@ -1,5 +1,5 @@
 import { rarityIndex, type Rarity } from "./FishData";
-import { RODS, rodMaxRarityIndex, type RodDef } from "./RodData";
+import { BAITS, baitMaxRarityIndex, type BaitDef } from "./BaitData";
 
 export type ParticleStyle = "fireflies" | "mist" | "gulls" | "motes" | "sparkle";
 
@@ -162,13 +162,13 @@ export function locationRarityBounds(loc: LocationDef): { min: number; max: numb
   return { min: rarityIndex(loc.minRarity), max: rarityIndex(loc.maxRarity) };
 }
 
-/** min(rod ceiling, location ceiling) — a high-tier rod on a low-tier scene still caps at the scene's max. */
-export function effectiveMaxRarityIndex(loc: LocationDef, rod: RodDef): number {
-  return Math.min(rodMaxRarityIndex(rod), locationRarityBounds(loc).max);
+/** min(bait ceiling, location ceiling) — good bait on a low-tier scene still caps at the scene's max. */
+export function effectiveMaxRarityIndex(loc: LocationDef, bait: BaitDef): number {
+  return Math.min(baitMaxRarityIndex(bait), locationRarityBounds(loc).max);
 }
 
-/** Cheapest rod able to reach this location's top tier — shown on the Maps card as a recommendation. */
-export function recommendedRodFor(loc: LocationDef): RodDef {
+/** Cheapest bait able to reach this location's top tier — shown on the Maps card as a recommendation. */
+export function recommendedBaitFor(loc: LocationDef): BaitDef {
   const maxIdx = locationRarityBounds(loc).max;
-  return RODS.find((r) => rodMaxRarityIndex(r) >= maxIdx) ?? RODS[RODS.length - 1];
+  return BAITS.find((b) => baitMaxRarityIndex(b) >= maxIdx) ?? BAITS[BAITS.length - 1];
 }

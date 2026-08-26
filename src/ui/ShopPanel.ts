@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { BottomSheet, TEXT_STYLE, drawStatBar, makeButton, CardPager } from "./BottomSheet";
 import { RODS, type RodDef } from "../game/RodData";
+import { BAITS, type BaitDef } from "../game/BaitData";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
 import { WORLD_W } from "../game/Constants";
@@ -10,27 +11,118 @@ const CARD_H = 176;
 const GAP = 10;
 const STEP = CARD_W + GAP;
 
+type Tab = "bait" | "rods";
+
 export class ShopPanel extends BottomSheet {
+  private tab: Tab = "bait";
+
   constructor(scene: Phaser.Scene, private economy: Economy, private onChange: () => void) {
-    super(scene, "SHOP — RODS", 300);
+    super(scene, "SHOP", 300);
   }
 
   protected onOpen(): void {
+    this.render();
+  }
+
+  private render(): void {
+    this.content.removeAll(true);
     const scene = this.scene;
-    const list = scene.add.container(16, 4);
+
+    const tabBtn = (label: string, tab: Tab, x: number) =>
+      makeButton(scene, x, 0, 96, 24, label, this.tab === tab ? 0xffd93d : 0x3a3f4a, () => {
+        this.tab = tab;
+        this.render();
+      });
+    this.content.add(tabBtn("BAIT", "bait", WORLD_W / 2 - 54));
+    this.content.add(tabBtn("RODS", "rods", WORLD_W / 2 + 54));
+
+    const list = scene.add.container(16, 30);
     this.content.add(list);
 
-    RODS.forEach((rod, i) => this.buildCard(list, rod, i));
+    const count = this.tab === "bait" ? BAITS.length : RODS.length;
+    if (this.tab === "bait") BAITS.forEach((b, i) => this.buildBaitCard(list, b, i));
+    else RODS.forEach((r, i) => this.buildRodCard(list, r, i));
 
     const viewportW = WORLD_W - 32;
-    const pager = new CardPager(list, STEP, viewportW, RODS.length);
-    if (RODS.length * STEP > viewportW) {
-      this.content.add(makeButton(scene, 20, 254, 46, 28, "<", 0x8ecae6, () => pager.prev()));
-      this.content.add(makeButton(scene, WORLD_W - 66, 254, 46, 28, ">", 0x8ecae6, () => pager.next()));
+    const pager = new CardPager(list, STEP, viewportW, count);
+    if (count * STEP > viewportW) {
+      this.content.add(makeButton(scene, 20, 216, 46, 28, "<", 0x8ecae6, () => pager.prev()));
+      this.content.add(makeButton(scene, WORLD_W - 66, 216, 46, 28, ">", 0x8ecae6, () => pager.next()));
     }
   }
 
-  private buildCard(list: Phaser.GameObjects.Container, rod: RodDef, index: number): void {
+  private buildBaitCard(list: Phaser.GameObjects.Container, bait: BaitDef, index: number): void {
+    const scene = this.scene;
+    const x = index * STEP;
+    const card = scene.add.container(x, 0);
+    list.add(card);
+
+    const owned = this.economy.ownsBait(bait.id);
+    const equipped = this.economy.equippedBaitId === bait.id;
+    const affordable = this.economy.coins >= bait.cost;
+    const locked = !owned && !affordable;
+
+    const bg = scene.add
+      .rectangle(0, 0, CARD_W, CARD_H, locked ? 0x181a22 : 0x22273a)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, equipped ? 0x6bcb77 : 0x000000, equipped ? 1 : 0.5);
+    card.add(bg);
+
+    const icon = scene.add.image(CARD_W / 2, 34, TEX.baitIcon(bait.id)).setAlpha(locked ? 0.35 : 1);
+    card.add(icon);
+
+    const name = scene.add
+      .text(CARD_W / 2, 60, bait.name, { ...TEXT_STYLE, fontSize: "11px", color: locked ? "#6b6f7a" : "#f4f1de" })
+      .setOrigin(0.5, 0);
+    card.add(name);
+
+    const stats: [string, number, number][] = [
+      ["SPD", (bait.castSpeedMult - 1) / 0.6, 0x8ecae6],
+      ["CTL", (1 - bait.tensionForgiveness) / 0.6, 0x6bcb77],
+      ["RARE", bait.rareBonusPct / 0.32, 0xffd93d],
+    ];
+    stats.forEach(([label, pct, color], i) => {
+      const sy = 82 + i * 16;
+      const lbl = scene.add.text(8, sy, label, { ...TEXT_STYLE, fontSize: "9px" });
+      card.add(lbl);
+      card.add(drawStatBar(scene, 36, sy + 5, CARD_W - 44, locked ? pct * 0.4 : pct, color));
+    });
+
+    const costText = equipped || owned ? "" : `${bait.cost}c`;
+    if (costText) {
+      card.add(scene.add.text(CARD_W / 2, 134, costText, { ...TEXT_STYLE, fontSize: "12px", color: "#ffd93d" }).setOrigin(0.5));
+    }
+    if (locked) {
+      card.add(scene.add.text(CARD_W / 2, 150, `NEED ${bait.cost}c`, { ...TEXT_STYLE, fontSize: "9px", color: "#e63946" }).setOrigin(0.5));
+    }
+
+    const btnY = CARD_H - 20;
+    if (equipped) {
+      card.add(makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "EQUIPPED", 0x6b6f7a, () => {}));
+    } else if (owned) {
+      card.add(
+        makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "EQUIP", 0x8ecae6, () => {
+          this.economy.equipBait(bait.id);
+          this.onChange();
+          this.render();
+        })
+      );
+    } else if (affordable) {
+      card.add(
+        makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "BUY", 0xffd93d, () => {
+          if (this.economy.buyBait(bait.id, bait.cost)) {
+            this.economy.equipBait(bait.id);
+            this.onChange();
+            this.render();
+          }
+        })
+      );
+    } else {
+      card.add(makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "LOCKED", 0x3a3f4a, () => {}));
+    }
+  }
+
+  private buildRodCard(list: Phaser.GameObjects.Container, rod: RodDef, index: number): void {
     const scene = this.scene;
     const x = index * STEP;
     const card = scene.add.container(x, 0);
@@ -47,27 +139,21 @@ export class ShopPanel extends BottomSheet {
       .setStrokeStyle(2, equipped ? 0x6bcb77 : 0x000000, equipped ? 1 : 0.5);
     card.add(bg);
 
-    const icon = scene.add.image(CARD_W / 2, 34, TEX.rodIcon(rod.id)).setAlpha(locked ? 0.35 : 1);
+    const icon = scene.add.image(CARD_W / 2, 40, TEX.rodIcon(rod.id)).setAlpha(locked ? 0.35 : 1);
     card.add(icon);
 
     const name = scene.add
-      .text(CARD_W / 2, 60, rod.name, { ...TEXT_STYLE, fontSize: "11px", color: locked ? "#6b6f7a" : "#f4f1de" })
+      .text(CARD_W / 2, 70, rod.name, { ...TEXT_STYLE, fontSize: "11px", color: locked ? "#6b6f7a" : "#f4f1de" })
       .setOrigin(0.5, 0);
     card.add(name);
 
-    const stats: [string, number, number][] = [
-      ["SPD", (rod.castSpeedMult - 1) / 0.6, 0x8ecae6],
-      ["CTL", (1 - rod.tensionForgiveness) / 0.6, 0x6bcb77],
-      ["RARE", rod.rareBonusPct / 0.32, 0xffd93d],
-    ];
-    stats.forEach(([label, pct, color], i) => {
-      const sy = 82 + i * 16;
-      const lbl = scene.add.text(8, sy, label, { ...TEXT_STYLE, fontSize: "9px" });
-      card.add(lbl);
-      card.add(drawStatBar(scene, 36, sy + 5, CARD_W - 44, locked ? pct * 0.4 : pct, color));
-    });
+    card.add(
+      scene.add
+        .text(CARD_W / 2, 100, "COSMETIC\nONLY", { ...TEXT_STYLE, fontSize: "9px", color: "#6b6f7a", align: "center" })
+        .setOrigin(0.5, 0)
+    );
 
-    const costText = equipped ? "" : owned ? "" : `${rod.cost}c`;
+    const costText = equipped || owned ? "" : `${rod.cost}c`;
     if (costText) {
       card.add(scene.add.text(CARD_W / 2, 134, costText, { ...TEXT_STYLE, fontSize: "12px", color: "#ffd93d" }).setOrigin(0.5));
     }
@@ -83,7 +169,7 @@ export class ShopPanel extends BottomSheet {
         makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "EQUIP", 0x8ecae6, () => {
           this.economy.equipRod(rod.id);
           this.onChange();
-          this.open();
+          this.render();
         })
       );
     } else if (affordable) {
@@ -92,7 +178,7 @@ export class ShopPanel extends BottomSheet {
           if (this.economy.buyRod(rod.id, rod.cost)) {
             this.economy.equipRod(rod.id);
             this.onChange();
-            this.open();
+            this.render();
           }
         })
       );

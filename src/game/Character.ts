@@ -25,13 +25,13 @@ export class Fisherman extends Phaser.GameObjects.Container {
   private busy = false;
   private reelTween: Phaser.Tweens.Tween | null = null;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, rodId: string) {
     super(scene, x, y);
     scene.add.existing(this);
 
     this.legs = scene.add.sprite(0, 0, TEX.charLegs).setOrigin(0.5, 1);
     this.torso = scene.add.sprite(0, -13, TEX.charTorso).setOrigin(0.5, 1);
-    this.armRod = scene.add.sprite(7, -30, TEX.charArmRod).setOrigin(0.06, 0.5).setRotation(IDLE_ANGLE);
+    this.armRod = scene.add.sprite(7, -30, TEX.charArmRod(rodId)).setOrigin(0.06, 0.5).setRotation(IDLE_ANGLE);
     this.head = scene.add.sprite(0, -33, TEX.charHead("neutral")).setOrigin(0.5, 1);
 
     this.add([this.legs, this.torso, this.armRod, this.head]);
@@ -39,6 +39,11 @@ export class Fisherman extends Phaser.GameObjects.Container {
 
   setExpression(expr: Expression): void {
     this.head.setTexture(TEX.charHead(expr));
+  }
+
+  /** Swaps the held rod's appearance — purely cosmetic, doesn't touch gameplay stats. */
+  setRod(rodId: string): void {
+    this.armRod.setTexture(TEX.charArmRod(rodId));
   }
 
   /** World-space position of the rod tip, for anchoring the fishing line. */

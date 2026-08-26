@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { BottomSheet, TEXT_STYLE, makeButton, CardPager } from "./BottomSheet";
-import { LOCATIONS, recommendedRodFor } from "../game/LocationData";
+import { LOCATIONS, recommendedBaitFor } from "../game/LocationData";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
 import { WORLD_W } from "../game/Constants";
@@ -79,7 +79,7 @@ export class MapsPanel extends BottomSheet {
       .setOrigin(0.5, 0);
     card.add(tierText);
 
-    const rec = recommendedRodFor(loc);
+    const rec = recommendedBaitFor(loc);
     card.add(
       scene.add
         .text(CARD_W / 2, 118, `REC: ${rec.name}`, { ...TEXT_STYLE, fontSize: "8px", color: "#8ecae6" })

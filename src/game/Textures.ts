@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { FISH_SPECIES } from "./FishData";
 import { LOCATIONS, type LocationPalette, type ParticleStyle } from "./LocationData";
 import { RODS } from "./RodData";
+import { BAITS } from "./BaitData";
 
 // All art in this game is generated procedurally onto canvas textures at
 // boot time — there is no asset pipeline, no network fetch, so the app boots
@@ -596,8 +597,8 @@ export function generateCharacterHead(scene: Phaser.Scene, key: string, expressi
   refresh(scene, key);
 }
 
-/** Arm + rod as one rigid piece, pivoted at the shoulder (left edge, vertical middle). */
-export function generateCharacterArmRod(scene: Phaser.Scene, key: string): void {
+/** Arm + rod as one rigid piece, pivoted at the shoulder (left edge, vertical middle). Rod color reflects the equipped rod. */
+export function generateCharacterArmRod(scene: Phaser.Scene, key: string, rodColor: number): void {
   const w = 60,
     h = 14;
   const ctx = createCtx(scene, key, w, h);
@@ -607,13 +608,13 @@ export function generateCharacterArmRod(scene: Phaser.Scene, key: string): void 
   ctx.fillStyle = rgbToCss(hexToRgb(SKIN));
   ctx.fillRect(14, h / 2 - 2.5, 8, 5);
   // rod
-  ctx.strokeStyle = "#6b4a2e";
+  ctx.strokeStyle = rgbToCss(hexToRgb(rodColor));
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(18, h / 2);
   ctx.lineTo(w - 2, h / 2 - 5);
   ctx.stroke();
-  ctx.fillStyle = "#4a3420";
+  ctx.fillStyle = "#2a1810";
   ctx.fillRect(16, h / 2 - 2, 5, 4);
   refresh(scene, key);
 }
@@ -636,6 +637,27 @@ export function generateRodIcon(scene: Phaser.Scene, key: string, accent: number
   ctx.fill();
   ctx.fillStyle = "#2a1810";
   ctx.fillRect(0, h - 6, 8, 6);
+  refresh(scene, key);
+}
+
+/** Small wriggly bait-on-a-hook icon for shop cards, tinted per bait tier. */
+export function generateBaitIcon(scene: Phaser.Scene, key: string, color: number): void {
+  const w = 32,
+    h = 24;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.strokeStyle = "#8a8f9a";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(w / 2, 6, 4, Math.PI * 0.15, Math.PI * 1.6);
+  ctx.stroke();
+  ctx.strokeStyle = rgbToCss(hexToRgb(color));
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 9);
+  ctx.quadraticCurveTo(w / 2 - 7, 14, w / 2 - 4, 21);
+  ctx.quadraticCurveTo(w / 2, 24, w / 2 + 5, 19);
+  ctx.stroke();
   refresh(scene, key);
 }
 
@@ -690,18 +712,19 @@ export const TEX = {
   charLegs: "tex-char-legs",
   charTorso: "tex-char-torso",
   charHead: (expr: string) => `tex-char-head-${expr}`,
-  charArmRod: "tex-char-armrod",
+  charArmRod: (rodId: string) => `tex-char-armrod-${rodId}`,
   rodIcon: (id: string) => `tex-rodicon-${id}`,
+  baitIcon: (id: string) => `tex-baiticon-${id}`,
   coin: "tex-coin",
   lock: "tex-lock",
 };
 
-const ROD_ICON_COLORS: Record<string, number> = {
-  twig: 0x8a6a4a,
-  iron: 0xaeb4bb,
-  carbon: 0x3a3f4a,
-  deep: 0x2f6e8a,
-  mythic: 0xb98cf2,
+const BAIT_ICON_COLORS: Record<string, number> = {
+  "plain-worm": 0xc9788a,
+  "fat-grub": 0xd6c34a,
+  "live-cricket": 0x6bcb77,
+  "shiny-lure": 0x8ecae6,
+  "golden-lure": 0xffd93d,
 };
 
 export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): void {
@@ -734,9 +757,12 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
   generateCharacterHead(scene, TEX.charHead("smile"), "smile");
   generateCharacterHead(scene, TEX.charHead("shocked"), "shocked");
   generateCharacterHead(scene, TEX.charHead("stars"), "stars");
-  generateCharacterArmRod(scene, TEX.charArmRod);
+  for (const rod of RODS) {
+    generateCharacterArmRod(scene, TEX.charArmRod(rod.id), rod.color);
+    generateRodIcon(scene, TEX.rodIcon(rod.id), rod.color);
+  }
+  for (const bait of BAITS) generateBaitIcon(scene, TEX.baitIcon(bait.id), BAIT_ICON_COLORS[bait.id] ?? 0xffffff);
 
-  for (const rod of RODS) generateRodIcon(scene, TEX.rodIcon(rod.id), ROD_ICON_COLORS[rod.id] ?? 0xffffff);
   generateCoinIcon(scene, TEX.coin);
   generateLockIcon(scene, TEX.lock);
 }
