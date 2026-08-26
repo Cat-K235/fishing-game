@@ -76,17 +76,14 @@ export class ShopPanel extends BottomSheet {
       .setOrigin(0.5, 0);
     card.add(name);
 
-    const stats: [string, number, number][] = [
-      ["SPD", (bait.castSpeedMult - 1) / 0.6, 0x8ecae6],
-      ["CTL", (1 - bait.tensionForgiveness) / 0.6, 0x6bcb77],
-      ["RARE", bait.rareBonusPct / 0.32, 0xffd93d],
-    ];
-    stats.forEach(([label, pct, color], i) => {
-      const sy = 82 + i * 16;
-      const lbl = scene.add.text(8, sy, label, { ...TEXT_STYLE, fontSize: "9px" });
-      card.add(lbl);
-      card.add(drawStatBar(scene, 36, sy + 5, CARD_W - 44, locked ? pct * 0.4 : pct, color));
-    });
+    const rarePct = bait.rareBonusPct / 0.4;
+    card.add(scene.add.text(8, 86, "RARE", { ...TEXT_STYLE, fontSize: "9px" }));
+    card.add(drawStatBar(scene, 36, 91, CARD_W - 44, locked ? rarePct * 0.4 : rarePct, 0xffd93d));
+    card.add(
+      scene.add
+        .text(CARD_W / 2, 106, `UP TO ${bait.maxRarity.toUpperCase()}`, { ...TEXT_STYLE, fontSize: "8px", color: "#9aa0b4" })
+        .setOrigin(0.5, 0)
+    );
 
     const costText = equipped || owned ? "" : `${bait.cost}c`;
     if (costText) {
@@ -139,19 +136,23 @@ export class ShopPanel extends BottomSheet {
       .setStrokeStyle(2, equipped ? 0x6bcb77 : 0x000000, equipped ? 1 : 0.5);
     card.add(bg);
 
-    const icon = scene.add.image(CARD_W / 2, 40, TEX.rodIcon(rod.id)).setAlpha(locked ? 0.35 : 1);
+    const icon = scene.add.image(CARD_W / 2, 34, TEX.rodIcon(rod.id)).setAlpha(locked ? 0.35 : 1);
     card.add(icon);
 
     const name = scene.add
-      .text(CARD_W / 2, 70, rod.name, { ...TEXT_STYLE, fontSize: "11px", color: locked ? "#6b6f7a" : "#f4f1de" })
+      .text(CARD_W / 2, 60, rod.name, { ...TEXT_STYLE, fontSize: "11px", color: locked ? "#6b6f7a" : "#f4f1de" })
       .setOrigin(0.5, 0);
     card.add(name);
 
-    card.add(
-      scene.add
-        .text(CARD_W / 2, 100, "COSMETIC\nONLY", { ...TEXT_STYLE, fontSize: "9px", color: "#6b6f7a", align: "center" })
-        .setOrigin(0.5, 0)
-    );
+    const stats: [string, number, number][] = [
+      ["SPD", (rod.castSpeedMult - 1) / 0.6, 0x8ecae6],
+      ["CTL", (1 - rod.tensionForgiveness) / 0.6, 0x6bcb77],
+    ];
+    stats.forEach(([label, pct, color], i) => {
+      const sy = 82 + i * 16;
+      card.add(scene.add.text(8, sy, label, { ...TEXT_STYLE, fontSize: "9px" }));
+      card.add(drawStatBar(scene, 36, sy + 5, CARD_W - 44, locked ? pct * 0.4 : pct, color));
+    });
 
     const costText = equipped || owned ? "" : `${rod.cost}c`;
     if (costText) {

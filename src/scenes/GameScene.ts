@@ -19,8 +19,8 @@ import { stepReel, type ReelState } from "../game/ReelMath";
 import { AudioSynth } from "../game/AudioSynth";
 import { TelegramService } from "../telegram/TelegramService";
 import { Economy } from "../game/Economy";
-import { rodById, type RodDef } from "../game/RodData";
-import { baitById, tuningForBait, type BaitDef } from "../game/BaitData";
+import { rodById, tuningForRod, type RodDef } from "../game/RodData";
+import { baitById, type BaitDef } from "../game/BaitData";
 import { locationById, locationRarityBounds, effectiveMaxRarityIndex, type LocationDef, type ParticleStyle } from "../game/LocationData";
 import { Fisherman, expressionForRarity } from "../game/Character";
 import { SideMenu } from "../ui/SideMenu";
@@ -63,8 +63,9 @@ export class GameScene extends Phaser.Scene {
   private audio = new AudioSynth();
   private economy!: Economy;
   private location!: LocationDef;
-  /** Cosmetic only — what the character holds. Gameplay stats come from `bait`. */
+  /** Cast speed + reel forgiveness. Also what the character visibly holds. */
   private rod!: RodDef;
+  /** What bites at all — rarity odds and ceiling. No effect on the reel minigame itself. */
   private bait!: BaitDef;
 
   private world!: Phaser.GameObjects.Container;
@@ -478,7 +479,7 @@ export class GameScene extends Phaser.Scene {
     const ty = Phaser.Math.Clamp(py, CAST_MIN_Y, CAST_MAX_Y);
     this.castTo = { x: tx, y: ty };
     const baseDuration = 0.32 + (Math.abs(ty - this.castFrom.y) / (CAST_MAX_Y - CAST_MIN_Y)) * 0.28;
-    this.castDuration = baseDuration / this.bait.castSpeedMult;
+    this.castDuration = baseDuration / this.rod.castSpeedMult;
 
     this.currentFish = pickWeightedFish(pool, this.bait.rareBonusPct);
 
@@ -602,7 +603,7 @@ export class GameScene extends Phaser.Scene {
     if (this.reelGrace > 0) {
       this.reelGrace -= dt;
     } else {
-      const { state, outcome } = stepReel(this.reelState, dt, holding, pull, fish.fightStrength, tuningForBait(this.bait));
+      const { state, outcome } = stepReel(this.reelState, dt, holding, pull, fish.fightStrength, tuningForRod(this.rod));
       this.reelState = state;
 
       if (holding) {

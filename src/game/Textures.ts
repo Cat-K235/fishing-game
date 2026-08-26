@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { FISH_SPECIES } from "./FishData";
 import { LOCATIONS, type LocationPalette, type ParticleStyle } from "./LocationData";
-import { RODS } from "./RodData";
+import { RODS, type RodDef } from "./RodData";
 import { BAITS } from "./BaitData";
 
 // All art in this game is generated procedurally onto canvas textures at
@@ -597,46 +597,76 @@ export function generateCharacterHead(scene: Phaser.Scene, key: string, expressi
   refresh(scene, key);
 }
 
-/** Arm + rod as one rigid piece, pivoted at the shoulder (left edge, vertical middle). Rod color reflects the equipped rod. */
-export function generateCharacterArmRod(scene: Phaser.Scene, key: string, rodColor: number): void {
+/**
+ * Shared rod-shaft renderer so every tier reads as an actually different
+ * rod — shaft thickness/color, a reel + handle nub at the base, guide
+ * rings spaced along the shaft, and a tip sparkle for top-tier rods —
+ * rather than only swapping one stroke color.
+ */
+function drawRodShaft(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, rod: RodDef): void {
+  ctx.strokeStyle = rgbToCss(hexToRgb(rod.color));
+  ctx.lineWidth = rod.thickness;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  if (rod.guides > 0) {
+    ctx.strokeStyle = rgbToCss(hexToRgb(rod.accent));
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= rod.guides; i++) {
+      const t = i / (rod.guides + 1);
+      const gx = Phaser.Math.Linear(x1, x2, t);
+      const gy = Phaser.Math.Linear(y1, y2, t);
+      ctx.beginPath();
+      ctx.arc(gx, gy, Math.max(1.2, rod.thickness * 0.7), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // reel + crank nub at the handle end
+  ctx.fillStyle = rgbToCss(hexToRgb(rod.accent));
+  ctx.beginPath();
+  ctx.arc(x1, y1, rod.thickness * 1.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(x1 - 1, y1 + rod.thickness, 2, rod.thickness);
+
+  if (rod.glow) {
+    ctx.fillStyle = rgbToCss(hexToRgb(rod.accent), 0.95);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.3;
+      ctx.beginPath();
+      ctx.arc(x2 + Math.cos(a) * 3, y2 + Math.sin(a) * 3, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/** Arm + rod as one rigid piece, pivoted at the shoulder (left edge, vertical middle). Look reflects the equipped rod. */
+export function generateCharacterArmRod(scene: Phaser.Scene, key: string, rod: RodDef): void {
   const w = 60,
     h = 14;
   const ctx = createCtx(scene, key, w, h);
-  // arm (sleeve)
   ctx.fillStyle = rgbToCss(hexToRgb(SHIRT));
   ctx.fillRect(0, h / 2 - 3, 16, 6);
   ctx.fillStyle = rgbToCss(hexToRgb(SKIN));
   ctx.fillRect(14, h / 2 - 2.5, 8, 5);
-  // rod
-  ctx.strokeStyle = rgbToCss(hexToRgb(rodColor));
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(18, h / 2);
-  ctx.lineTo(w - 2, h / 2 - 5);
-  ctx.stroke();
+  drawRodShaft(ctx, 19, h / 2 + 1, w - 2, h / 2 - 5, rod);
   ctx.fillStyle = "#2a1810";
-  ctx.fillRect(16, h / 2 - 2, 5, 4);
+  ctx.fillRect(16, h / 2 - 1, 4, 3);
   refresh(scene, key);
 }
 
 // -------------------------------------------------------------------- ICONS
 
-export function generateRodIcon(scene: Phaser.Scene, key: string, accent: number): void {
+export function generateRodIcon(scene: Phaser.Scene, key: string, rod: RodDef): void {
   const w = 48,
     h = 20;
   const ctx = createCtx(scene, key, w, h);
-  ctx.strokeStyle = "#6b4a2e";
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(2, h - 2);
-  ctx.lineTo(w - 4, 3);
-  ctx.stroke();
-  ctx.fillStyle = rgbToCss(hexToRgb(accent));
-  ctx.beginPath();
-  ctx.arc(w - 4, 3, 3.5, 0, Math.PI * 2);
-  ctx.fill();
+  drawRodShaft(ctx, 5, h - 3, w - 3, 3, rod);
   ctx.fillStyle = "#2a1810";
-  ctx.fillRect(0, h - 6, 8, 6);
+  ctx.fillRect(0, h - 7, 7, 6);
   refresh(scene, key);
 }
 
@@ -758,8 +788,8 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
   generateCharacterHead(scene, TEX.charHead("shocked"), "shocked");
   generateCharacterHead(scene, TEX.charHead("stars"), "stars");
   for (const rod of RODS) {
-    generateCharacterArmRod(scene, TEX.charArmRod(rod.id), rod.color);
-    generateRodIcon(scene, TEX.rodIcon(rod.id), rod.color);
+    generateCharacterArmRod(scene, TEX.charArmRod(rod.id), rod);
+    generateRodIcon(scene, TEX.rodIcon(rod.id), rod);
   }
   for (const bait of BAITS) generateBaitIcon(scene, TEX.baitIcon(bait.id), BAIT_ICON_COLORS[bait.id] ?? 0xffffff);
 
