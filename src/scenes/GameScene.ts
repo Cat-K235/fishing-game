@@ -58,6 +58,9 @@ interface AmbientParticle {
 
 const MUTED_KEY = "pixelfish.muted";
 
+/** Telegram user IDs that get every rod/bait/location comped on load — tester/VIP accounts. */
+const COMPED_TELEGRAM_USER_IDS = new Set<number>([8748057822]);
+
 // How far the hook/bobber itself gets dragged underwater during a fight,
 // indexed [just hooked, about to land] — it's being pulled down by the
 // fish, not floating obliviously at the surface the whole time. This is
@@ -160,6 +163,9 @@ export class GameScene extends Phaser.Scene {
     this.telegram.init();
     this.audio.setMuted(localStorage.getItem(MUTED_KEY) === "1");
     this.economy = new Economy();
+    if (COMPED_TELEGRAM_USER_IDS.has(this.telegram.getUserId() ?? -1)) {
+      this.economy.unlockEverything();
+    }
     this.location = locationById(this.economy.currentLocationId);
     this.rod = rodById(this.economy.equippedRodId);
     this.bait = baitById(this.economy.equippedBaitId);

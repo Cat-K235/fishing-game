@@ -12,6 +12,10 @@ interface TelegramThemeParams {
   secondary_bg_color?: string;
 }
 
+interface TelegramUser {
+  id: number;
+}
+
 interface TelegramWebApp {
   ready: () => void;
   expand: () => void;
@@ -82,6 +86,17 @@ export class TelegramService {
   /** Raw initData string for future server-side validation. Never parsed here. */
   getInitData(): string {
     return this.webApp?.initData ?? "";
+  }
+
+  /**
+   * The Telegram user ID from initDataUnsafe, for convenience/display only
+   * (e.g. gating a client-side unlock for a specific tester account). Per
+   * the class-level SECURITY NOTE, this is spoofable and must never be
+   * trusted for anything that needs real authentication.
+   */
+  getUserId(): number | null {
+    const user = this.webApp?.initDataUnsafe?.user as TelegramUser | undefined;
+    return user?.id ?? null;
   }
 
   getColorScheme(): "light" | "dark" {

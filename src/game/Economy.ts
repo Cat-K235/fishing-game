@@ -1,5 +1,7 @@
 import { fishById, rarityIndex, type FishSpecies } from "./FishData";
 import { LOCATIONS } from "./LocationData";
+import { RODS } from "./RodData";
+import { BAITS } from "./BaitData";
 
 export interface InventoryFish {
   uid: string;
@@ -207,5 +209,21 @@ export class Economy {
   travelTo(locationId: string): void {
     this.currentLocationId = locationId;
     writeJson(KEYS.currentLocation, locationId);
+  }
+
+  /** Owns every rod and bait, equips the best of each, and unlocks every location. Used to comp a specific tester account. */
+  unlockEverything(): void {
+    this.ownedRodIds = RODS.map((r) => r.id);
+    writeJson(KEYS.ownedRods, this.ownedRodIds);
+    this.equippedRodId = RODS[RODS.length - 1].id;
+    writeJson(KEYS.equippedRod, this.equippedRodId);
+
+    this.ownedBaitIds = BAITS.map((b) => b.id);
+    writeJson(KEYS.ownedBait, this.ownedBaitIds);
+    this.equippedBaitId = BAITS[BAITS.length - 1].id;
+    writeJson(KEYS.equippedBait, this.equippedBaitId);
+
+    this.unlockedLocationIds = LOCATIONS.map((l) => l.id);
+    writeJson(KEYS.unlockedLocations, this.unlockedLocationIds);
   }
 }
