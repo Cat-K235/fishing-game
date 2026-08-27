@@ -210,57 +210,30 @@ export function generateWaterTile(scene: Phaser.Scene, key: string, size: number
   refresh(scene, key);
 }
 
-/** A short dashed streak, tiled horizontally by a TileSprite to make one scrolling "shimmer row" or current line on the water. */
-export function generateShimmerRowTile(scene: Phaser.Scene, key: string, color: number): void {
-  const w = 40,
-    h = 8;
-  const ctx = createCtx(scene, key, w, h);
-  ctx.fillStyle = rgbToCss(hexToRgb(color), 0.85);
-  ctx.fillRect(2, h / 2 - 1, 15, 2);
-  ctx.fillRect(23, h / 2 - 1, 11, 2);
-  refresh(scene, key);
-}
-
 /** Back layer of a 2-layer treeline: a continuous chain of rounded bumps (bushes/hedge), no gaps. */
-export function generateHedgeLayer(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
+/** Jagged pine-spike treeline silhouette — one layer, no round "just circles" canopies. */
+export function generateTreeline(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
-  let seed = 11;
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.treeline), 1);
+  const spikeW = 9;
+  let x = -4;
+  let seed = 5;
   const next = () => {
     seed = (seed * 9301 + 49297) % 233280;
     return seed / 233280;
   };
-  ctx.fillStyle = rgbToCss(hexToRgb(pal.mountainHaze));
-  const step = 15;
-  for (let x = -8; x < w + 8; x += step) {
-    const r = h * (0.55 + next() * 0.35);
-    ctx.beginPath();
-    ctx.arc(x, h, r, Math.PI, 0, true);
-    ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  while (x < w + spikeW) {
+    const peakH = h * (0.45 + next() * 0.5);
+    ctx.lineTo(x, h - peakH * 0.15);
+    ctx.lineTo(x + spikeW / 2, h - peakH);
+    ctx.lineTo(x + spikeW, h - peakH * 0.15);
+    x += spikeW * (0.7 + next() * 0.3);
   }
-  ctx.fillRect(0, h - 4, w, 4);
-  refresh(scene, key);
-}
-
-/** Front layer: distinct round-canopy trees with visible trunks, spaced apart so the hedge layer shows through the gaps. */
-export function generateTreeLayer(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
-  const ctx = createCtx(scene, key, w, h);
-  let seed = 71;
-  const next = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-  const count = 6;
-  for (let i = 0; i < count; i++) {
-    const x = (i + 0.5) * (w / count) + (next() - 0.5) * (w / count) * 0.6;
-    const trunkH = h * (0.32 + next() * 0.14);
-    const canopyR = h * (0.34 + next() * 0.16);
-    ctx.fillStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
-    ctx.fillRect(x - 2, h - trunkH, 3, trunkH);
-    ctx.fillStyle = rgbToCss(hexToRgb(pal.treeline));
-    ctx.beginPath();
-    ctx.arc(x, h - trunkH - canopyR * 0.55, canopyR, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fill();
   refresh(scene, key);
 }
 
@@ -1105,12 +1078,10 @@ export function generateLockIcon(scene: Phaser.Scene, key: string): void {
 export const TEX = {
   sky: (loc: string) => `tex-sky-${loc}`,
   mountains: (loc: string) => `tex-mountains-${loc}`,
-  hedge: (loc: string) => `tex-hedge-${loc}`,
-  trees: (loc: string) => `tex-trees-${loc}`,
+  treeline: (loc: string) => `tex-treeline-${loc}`,
   grassEdge: (loc: string) => `tex-grassedge-${loc}`,
   overhangBranch: (loc: string) => `tex-overhang-${loc}`,
   water: (loc: string) => `tex-water-${loc}`,
-  shimmerRow: (loc: string) => `tex-shimmerrow-${loc}`,
   ambient: (style: string) => `tex-ambient-${style}`,
   lilyPad: (i: number, flower: boolean) => `tex-lilypad-${i}-${flower ? "f" : "n"}`,
   dockPlank: (loc: string) => `tex-dock-plank-${loc}`,
@@ -1155,12 +1126,10 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
   for (const loc of LOCATIONS) {
     generateSky(scene, TEX.sky(loc.id), w, Math.round(h * 0.34), loc.palette);
     generateMountains(scene, TEX.mountains(loc.id), w, 60, loc.palette);
-    generateHedgeLayer(scene, TEX.hedge(loc.id), w, 30, loc.palette);
-    generateTreeLayer(scene, TEX.trees(loc.id), w, 46, loc.palette);
+    generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
     generateGrassEdge(scene, TEX.grassEdge(loc.id), w, 8, loc.palette);
     generateOverhangBranch(scene, TEX.overhangBranch(loc.id), loc.palette);
     generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
-    generateShimmerRowTile(scene, TEX.shimmerRow(loc.id), loc.palette.shimmer);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
     generateDockPost(scene, TEX.dockPost(loc.id), loc.palette);
   }
