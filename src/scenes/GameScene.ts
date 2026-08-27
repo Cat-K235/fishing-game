@@ -99,7 +99,6 @@ export class GameScene extends Phaser.Scene {
   private swayT = 0;
 
   private waterTile!: Phaser.GameObjects.TileSprite;
-  private shimmerTile!: Phaser.GameObjects.TileSprite;
   private lilyLayer!: Phaser.GameObjects.Container;
 
   private ambientFish: AmbientFish[] = [];
@@ -200,20 +199,24 @@ export class GameScene extends Phaser.Scene {
     const mountains = this.add.image(0, HORIZON_Y - 55, TEX.mountains(loc.id)).setOrigin(0, 0).setAlpha(0.9);
     mountains.setDisplaySize(WORLD_W, 60);
 
-    const treeline = this.add.image(0, HORIZON_Y - 34, TEX.treeline(loc.id)).setOrigin(0, 0);
-    treeline.setDisplaySize(WORLD_W, 40);
+    // 2-layer treeline: the hedge sits further back (0.1x, bgLayer), the
+    // individual trees poke up in front of it with their own trunks (0.3x,
+    // midLayer) — real parallax between the two instead of one flat band.
+    const hedge = this.add.image(0, HORIZON_Y - 26, TEX.hedge(loc.id)).setOrigin(0, 0);
+    hedge.setDisplaySize(WORLD_W, 30);
+    this.bgLayer.add([sky, mountains, hedge]);
 
-    this.bgLayer.add([sky, mountains, treeline]);
+    const trees = this.add.image(0, HORIZON_Y - 40, TEX.trees(loc.id)).setOrigin(0, 0);
+    trees.setDisplaySize(WORLD_W, 46);
+
+    const grassEdge = this.add.image(0, HORIZON_Y - 4, TEX.grassEdge(loc.id)).setOrigin(0, 0);
+    grassEdge.setDisplaySize(WORLD_W, 8);
 
     this.waterTile = this.add
       .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.water(loc.id))
       .setOrigin(0, 0);
-    this.shimmerTile = this.add
-      .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.shimmer(loc.id))
-      .setOrigin(0, 0)
-      .setAlpha(0.35);
 
-    this.midLayer.add([this.waterTile, this.shimmerTile]);
+    this.midLayer.add([trees, grassEdge, this.waterTile]);
 
     if (loc.decor.edgeTrees) this.spawnOverhangBranches(loc);
 
@@ -235,6 +238,10 @@ export class GameScene extends Phaser.Scene {
       const plank = this.add.image(x, DOCK_TOP, TEX.dockPlank(loc.id)).setOrigin(0, 0);
       plank.setDisplaySize(plankW + 1, dockH);
       this.world.add(plank);
+
+      // Support posts peeking out below the dock's front edge, like pilings.
+      const post = this.add.image(x + plankW / 2, WORLD_H - 2, TEX.dockPost(loc.id)).setOrigin(0.5, 1);
+      this.world.add(post);
     }
 
     this.line = this.add.graphics();
@@ -274,22 +281,26 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // Hand-placed so the composition stays deliberate — clustered near the
-  // banks on both sides, clear of the center where casts usually land.
-  private static readonly LILY_LAYOUT: { xr: number; yr: number; variant: number; scale: number; seed: number }[] = [
-    { xr: 0.06, yr: 0.86, variant: 0, scale: 1.15, seed: 10 },
-    { xr: 0.14, yr: 0.94, variant: 1, scale: 0.95, seed: 40 },
-    { xr: 0.09, yr: 0.75, variant: 2, scale: 0.85, seed: 70 },
-    { xr: 0.88, yr: 0.88, variant: 1, scale: 1.1, seed: 130 },
-    { xr: 0.94, yr: 0.78, variant: 2, scale: 0.9, seed: 190 },
-    { xr: 0.8, yr: 0.96, variant: 0, scale: 0.8, seed: 250 },
+  // Hand-placed so the composition stays deliberate — scattered across the
+  // pond rather than clustered only at the banks, the way the reference art
+  // does it.
+  private static readonly LILY_LAYOUT: { xr: number; yr: number; variant: number; scale: number; seed: number; flower: boolean }[] = [
+    { xr: 0.15, yr: 0.58, variant: 0, scale: 0.8, seed: 10, flower: false },
+    { xr: 0.85, yr: 0.62, variant: 1, scale: 0.75, seed: 40, flower: false },
+    { xr: 0.48, yr: 0.66, variant: 2, scale: 0.7, seed: 70, flower: false },
+    { xr: 0.2, yr: 0.74, variant: 1, scale: 0.95, seed: 100, flower: true },
+    { xr: 0.72, yr: 0.78, variant: 0, scale: 1.0, seed: 130, flower: true },
+    { xr: 0.06, yr: 0.9, variant: 2, scale: 1.1, seed: 160, flower: true },
+    { xr: 0.42, yr: 0.88, variant: 0, scale: 0.85, seed: 190, flower: false },
+    { xr: 0.9, yr: 0.94, variant: 1, scale: 1.05, seed: 220, flower: true },
+    { xr: 0.28, yr: 0.97, variant: 2, scale: 0.8, seed: 250, flower: false },
   ];
 
   private spawnLilyPads(): void {
     for (const spot of GameScene.LILY_LAYOUT) {
       const x = spot.xr * WORLD_W;
       const y = WATER_TOP + spot.yr * (WATER_BOTTOM - WATER_TOP);
-      const pad = this.add.image(x, y, TEX.lilyPad(spot.variant));
+      const pad = this.add.image(x, y, TEX.lilyPad(spot.variant, spot.flower));
       pad.setScale(spot.scale);
       pad.setData("baseX", x);
       pad.setData("baseY", y);
@@ -389,13 +400,13 @@ export class GameScene extends Phaser.Scene {
   private spawnSceneSpecials(loc: LocationDef): void {
     switch (loc.special) {
       case "pond":
-        this.spawnPondSpecials();
+        this.spawnPondSpecials(loc);
         break;
       case "gorge":
         this.spawnGorgeSpecials(loc);
         break;
       case "pier":
-        this.spawnPierSpecials();
+        this.spawnPierSpecials(loc);
         break;
       case "abyss":
         this.spawnAbyssSpecials();
@@ -406,7 +417,18 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private spawnPondSpecials(): void {
+  /** One scrolling horizontal streak row on the water — the base building block for each scene's own shimmer/current look. */
+  private spawnShimmerRow(loc: LocationDef, y: number, height: number, speed: number, alpha = 0.85): void {
+    const row = this.add.tileSprite(0, y, WORLD_W, height, TEX.shimmerRow(loc.id)).setOrigin(0, 0).setAlpha(alpha);
+    this.midLayer.add(row);
+    this.specialUpdaters.push((_time, dt) => {
+      row.tilePositionX += speed * dt;
+    });
+  }
+
+  private spawnPondSpecials(loc: LocationDef): void {
+    this.spawnShimmerRow(loc, WATER_TOP + (WATER_BOTTOM - WATER_TOP) * 0.4, 4, 8);
+
     for (let i = 0; i < 3; i++) {
       const cloud = this.add
         .image(Math.random() * WORLD_W, 18 + Math.random() * 70, TEX.cloud)
@@ -449,6 +471,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnGorgeSpecials(loc: LocationDef): void {
+    // Fast current: 3 rows, right-to-left, much quicker than the pond's.
+    const span = WATER_BOTTOM - WATER_TOP;
+    this.spawnShimmerRow(loc, WATER_TOP + span * 0.25, 4, -55);
+    this.spawnShimmerRow(loc, WATER_TOP + span * 0.5, 4, -70);
+    this.spawnShimmerRow(loc, WATER_TOP + span * 0.75, 4, -60);
+
     // These frame the water too (canyon walls run down past the waterline),
     // not just the sky above it, so they need to render in front of the
     // water tile rather than behind it — straight onto `world` (the 1x
@@ -465,13 +493,36 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private spawnPierSpecials(): void {
+  private spawnPierSpecials(loc: LocationDef): void {
     const sunX = WORLD_W * 0.72;
     const sun = this.add.image(sunX, HORIZON_Y - 6, TEX.sun).setScale(1.1);
     this.bgLayer.add(sun);
 
     const reflection = this.add.image(sunX, WATER_TOP + 80, TEX.sun).setScale(0.55, 3.4).setAlpha(0.22);
     this.midLayer.add(reflection);
+
+    // Rolling waves: real sine-wave lines (not straight rows), each at its
+    // own height/speed so they read as depth rather than one flat current.
+    const waveGfx = this.add.graphics();
+    this.midLayer.add(waveGfx);
+    const waves: { baseY: number; amp: number; freq: number; speed: number; phase: number }[] = [
+      { baseY: WATER_TOP + 40, amp: 5, freq: 0.025, speed: 1.4, phase: 0 },
+      { baseY: WATER_TOP + 90, amp: 7, freq: 0.02, speed: 1.0, phase: 2 },
+      { baseY: WATER_TOP + 150, amp: 6, freq: 0.017, speed: 0.7, phase: 4 },
+    ];
+    this.specialUpdaters.push((time) => {
+      waveGfx.clear();
+      waveGfx.lineStyle(1.5, loc.palette.shimmer, 0.6);
+      for (const w of waves) {
+        waveGfx.beginPath();
+        for (let x = 0; x <= WORLD_W; x += 8) {
+          const y = w.baseY + Math.sin(x * w.freq + time / 1000 * w.speed + w.phase) * w.amp;
+          if (x === 0) waveGfx.moveTo(x, y);
+          else waveGfx.lineTo(x, y);
+        }
+        waveGfx.strokePath();
+      }
+    });
 
     const lighthouse = this.add.image(WORLD_W - 28, HORIZON_Y - 34, TEX.lighthouse).setOrigin(0.5, 1).setAlpha(0.75);
     this.bgLayer.add(lighthouse);
@@ -561,8 +612,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnCrystalSpecials(): void {
+    // In midLayer (not bgLayer) so the water-reflection half below can
+    // render in front of the water tile instead of being hidden behind it.
     const auroraGfx = this.add.graphics();
-    this.bgLayer.add(auroraGfx);
+    this.midLayer.add(auroraGfx);
     let auroraT = Math.random() * 10;
     const bands: [number, number][] = [
       [0x3fd68a, 50],
@@ -573,9 +626,14 @@ export class GameScene extends Phaser.Scene {
       auroraT += dt;
       auroraGfx.clear();
       bands.forEach(([color, baseY], i) => {
-        auroraGfx.fillStyle(color, 0.14);
         const wave = Math.sin(auroraT * 0.4 + i * 1.7) * 14;
+        auroraGfx.fillStyle(color, 0.14);
         auroraGfx.fillRect(0, baseY + wave, WORLD_W, 24);
+
+        // A faint mirrored reflection of the same band, gently scrolling in
+        // the water below.
+        auroraGfx.fillStyle(color, 0.08);
+        auroraGfx.fillRect(0, WATER_TOP + 14 + i * 38 + wave * 0.6, WORLD_W, 26);
       });
     });
 
@@ -1170,10 +1228,6 @@ export class GameScene extends Phaser.Scene {
     this.bgLayer.y = -this.world.y * 0.9;
     this.midLayer.x = -this.world.x * 0.7;
     this.midLayer.y = -this.world.y * 0.7;
-
-    this.waterTile.tilePositionX += dt * 9;
-    this.shimmerTile.tilePositionX -= dt * 4;
-    this.shimmerTile.setAlpha(0.28 + Math.sin(time / 700) * 0.12);
 
     this.updateAmbientFish(dt);
     this.updateLilyPads(time);

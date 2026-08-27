@@ -66,7 +66,7 @@ const DOCK_EDGE = 0x2a1810;
 
 export function generateSky(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
-  const bands = 24;
+  const bands = 48;
   const bandH = Math.ceil(h / bands);
   for (let i = 0; i < bands; i++) {
     const t = i / (bands - 1);
@@ -84,7 +84,10 @@ export function generateSky(scene: Phaser.Scene, key: string, w: number, h: numb
       b = pal.skyHorizon;
       localT = (t - 0.78) / 0.22;
     }
-    ditherRect(ctx, 0, i * bandH, w, bandH, a, b, localT, 3);
+    // A fine 1px grain rather than chunky blocks — close enough to a smooth
+    // gradient to read as "soft sky" while still carrying a little of the
+    // dithered pixel-art texture the rest of the scene has.
+    ditherRect(ctx, 0, i * bandH, w, bandH, a, b, localT, 1);
   }
   refresh(scene, key);
 }
@@ -123,31 +126,6 @@ export function generateMountains(scene: Phaser.Scene, key: string, w: number, h
   const ctx = createCtx(scene, key, w, h);
   jaggedSilhouette(ctx, w, h, h - 4, h * 0.55, 7, pal.mountainHaze, 0.55, 7);
   jaggedSilhouette(ctx, w, h, h + 6, h * 0.4, 9, pal.mountain, 0.85, 21);
-  refresh(scene, key);
-}
-
-export function generateTreeline(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
-  const ctx = createCtx(scene, key, w, h);
-  ctx.fillStyle = rgbToCss(hexToRgb(pal.treeline), 1);
-  const spikeW = 9;
-  let x = -4;
-  let seed = 5;
-  const next = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-  ctx.beginPath();
-  ctx.moveTo(0, h);
-  while (x < w + spikeW) {
-    const peakH = h * (0.45 + next() * 0.5);
-    ctx.lineTo(x, h - peakH * 0.15);
-    ctx.lineTo(x + spikeW / 2, h - peakH);
-    ctx.lineTo(x + spikeW, h - peakH * 0.15);
-    x += spikeW * (0.7 + next() * 0.3);
-  }
-  ctx.lineTo(w, h);
-  ctx.closePath();
-  ctx.fill();
   refresh(scene, key);
 }
 
@@ -224,62 +202,115 @@ function cellHash(x: number, y: number, seed: number): number {
   return (h >>> 0) / 4294967295;
 }
 
+/** A flat, un-textured water fill — motion comes entirely from the separate per-scene shimmer rows/lines drawn on top, not from noise baked into the base tile. */
 export function generateWaterTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, size, size);
-  // An ordered (Bayer) dither reads as an obvious repeating grid once the
-  // cells are big enough to see — closer to a screen-door effect than
-  // water. Comparing a soft wave against per-cell hashed noise instead
-  // gives an irregular, hand-scattered speckle that still tiles cleanly
-  // (the hash is a pure function of cell coordinates). The mix range is
-  // also kept narrow so the two tones blend rather than one popping out.
-  const block = 4;
-  for (let y = 0; y < size; y += block) {
-    for (let x = 0; x < size; x += block) {
-      const cellX = x / block;
-      const cellY = y / block;
-      const wave = Math.sin((x / size) * Math.PI * 2.2 + (y / size) * Math.PI * 1.5) * 0.1;
-      const mix = Phaser.Math.Clamp(0.32 + wave, 0.15, 0.5);
-      const n = cellHash(cellX, cellY, 7);
-      ctx.fillStyle = rgbToCss(hexToRgb(n < mix ? pal.waterMid : pal.waterDeep));
-      ctx.fillRect(x, y, block, block);
-    }
-  }
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.waterMid));
+  ctx.fillRect(0, 0, size, size);
   refresh(scene, key);
 }
 
-export function generateShimmerTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
-  const ctx = createCtx(scene, key, size, size);
-  ctx.clearRect(0, 0, size, size);
-  let seed = 99;
+/** A short dashed streak, tiled horizontally by a TileSprite to make one scrolling "shimmer row" or current line on the water. */
+export function generateShimmerRowTile(scene: Phaser.Scene, key: string, color: number): void {
+  const w = 40,
+    h = 8;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = rgbToCss(hexToRgb(color), 0.85);
+  ctx.fillRect(2, h / 2 - 1, 15, 2);
+  ctx.fillRect(23, h / 2 - 1, 11, 2);
+  refresh(scene, key);
+}
+
+/** Back layer of a 2-layer treeline: a continuous chain of rounded bumps (bushes/hedge), no gaps. */
+export function generateHedgeLayer(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
+  const ctx = createCtx(scene, key, w, h);
+  let seed = 11;
   const next = () => {
     seed = (seed * 9301 + 49297) % 233280;
     return seed / 233280;
   };
-  ctx.fillStyle = rgbToCss(hexToRgb(pal.shimmer), 0.55);
-  for (let i = 0; i < 10; i++) {
-    const x = Math.floor(next() * size);
-    const y = Math.floor(next() * size);
-    const len = 2 + Math.floor(next() * 4);
-    ctx.fillRect(x, y, len, 2);
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.mountainHaze));
+  const step = 15;
+  for (let x = -8; x < w + 8; x += step) {
+    const r = h * (0.55 + next() * 0.35);
+    ctx.beginPath();
+    ctx.arc(x, h, r, Math.PI, 0, true);
+    ctx.fill();
+  }
+  ctx.fillRect(0, h - 4, w, 4);
+  refresh(scene, key);
+}
+
+/** Front layer: distinct round-canopy trees with visible trunks, spaced apart so the hedge layer shows through the gaps. */
+export function generateTreeLayer(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
+  const ctx = createCtx(scene, key, w, h);
+  let seed = 71;
+  const next = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  const count = 6;
+  for (let i = 0; i < count; i++) {
+    const x = (i + 0.5) * (w / count) + (next() - 0.5) * (w / count) * 0.6;
+    const trunkH = h * (0.32 + next() * 0.14);
+    const canopyR = h * (0.34 + next() * 0.16);
+    ctx.fillStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
+    ctx.fillRect(x - 2, h - trunkH, 3, trunkH);
+    ctx.fillStyle = rgbToCss(hexToRgb(pal.treeline));
+    ctx.beginPath();
+    ctx.arc(x, h - trunkH - canopyR * 0.55, canopyR, 0, Math.PI * 2);
+    ctx.fill();
   }
   refresh(scene, key);
 }
 
-export function generateLilyPad(scene: Phaser.Scene, key: string, variant: number): void {
-  const w = 26,
-    h = 18;
+/** Thin speckled transition strip between the background silhouette and the water. */
+export function generateGrassEdge(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, w, h);
-  const green = [0x2f7a4a, 0x3a8f52, 0x276b41][variant % 3];
+  for (let x = 0; x < w; x += 2) {
+    const n = cellHash(Math.floor(x / 2), 0, 13);
+    ctx.fillStyle = rgbToCss(hexToRgb(n < 0.5 ? pal.mountainHaze : pal.treeline));
+    ctx.fillRect(x, 0, 2, h);
+  }
+  refresh(scene, key);
+}
+
+/** Flat squashed-oval lily pad with a clean outline, matching the reference art's flat-shape-plus-outline style. `flower` adds a small pink 4-petal dot. */
+export function generateLilyPad(scene: Phaser.Scene, key: string, variant: number, flower: boolean): void {
+  const w = 30,
+    h = 14;
+  const ctx = createCtx(scene, key, w, h);
+  const green = [0x2f7a3f, 0x357a3a, 0x2a6f38][variant % 3];
+
   ctx.fillStyle = rgbToCss(hexToRgb(green));
   ctx.beginPath();
-  ctx.ellipse(w / 2, h / 2, w / 2 - 1, h / 2 - 1, 0, 0.35, Math.PI * 2 - 0.35);
+  ctx.ellipse(w / 2, h / 2, w / 2 - 2, h / 2 - 2, 0, 0.3, Math.PI * 2 - 0.3);
   ctx.lineTo(w / 2, h / 2);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = rgbToCss(hexToRgb(0x5fc27a), 0.7);
-  ctx.beginPath();
-  ctx.ellipse(w / 2 - 4, h / 2 - 3, 4, 2.4, -0.3, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
+  ctx.stroke();
+
+  if (flower) {
+    const fx = w / 2 + 2;
+    const fy = h / 2 - 1;
+    ctx.fillStyle = "#f2a6c8";
+    for (const [dx, dy] of [
+      [-2, 0],
+      [2, 0],
+      [0, -2],
+      [0, 2],
+    ]) {
+      ctx.beginPath();
+      ctx.arc(fx + dx, fy + dy, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#ffd93d";
+    ctx.beginPath();
+    ctx.arc(fx, fy, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
   refresh(scene, key);
 }
 
@@ -291,6 +322,18 @@ export function generateDockPlank(scene: Phaser.Scene, key: string, w: number, h
   for (let gx = 4; gx < w; gx += 9) {
     ctx.fillRect(gx, 3, 1, h - 5);
   }
+  refresh(scene, key);
+}
+
+/** A short vertical support post hanging below the dock's front edge, like a piling. */
+export function generateDockPost(scene: Phaser.Scene, key: string, pal: LocationPalette): void {
+  const w = 10,
+    h = 22;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = rgbToCss(hexToRgb(DOCK_EDGE));
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
+  ctx.fillRect(1, 0, w - 4, h - 2);
   refresh(scene, key);
 }
 
@@ -1062,13 +1105,16 @@ export function generateLockIcon(scene: Phaser.Scene, key: string): void {
 export const TEX = {
   sky: (loc: string) => `tex-sky-${loc}`,
   mountains: (loc: string) => `tex-mountains-${loc}`,
-  treeline: (loc: string) => `tex-treeline-${loc}`,
+  hedge: (loc: string) => `tex-hedge-${loc}`,
+  trees: (loc: string) => `tex-trees-${loc}`,
+  grassEdge: (loc: string) => `tex-grassedge-${loc}`,
   overhangBranch: (loc: string) => `tex-overhang-${loc}`,
   water: (loc: string) => `tex-water-${loc}`,
-  shimmer: (loc: string) => `tex-shimmer-${loc}`,
+  shimmerRow: (loc: string) => `tex-shimmerrow-${loc}`,
   ambient: (style: string) => `tex-ambient-${style}`,
-  lilyPad: (i: number) => `tex-lilypad-${i}`,
+  lilyPad: (i: number, flower: boolean) => `tex-lilypad-${i}-${flower ? "f" : "n"}`,
   dockPlank: (loc: string) => `tex-dock-plank-${loc}`,
+  dockPost: (loc: string) => `tex-dock-post-${loc}`,
   bobber: "tex-bobber",
   ripple: "tex-ripple",
   particle: (name: string) => `tex-particle-${name}`,
@@ -1109,16 +1155,22 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
   for (const loc of LOCATIONS) {
     generateSky(scene, TEX.sky(loc.id), w, Math.round(h * 0.34), loc.palette);
     generateMountains(scene, TEX.mountains(loc.id), w, 60, loc.palette);
-    generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
+    generateHedgeLayer(scene, TEX.hedge(loc.id), w, 30, loc.palette);
+    generateTreeLayer(scene, TEX.trees(loc.id), w, 46, loc.palette);
+    generateGrassEdge(scene, TEX.grassEdge(loc.id), w, 8, loc.palette);
     generateOverhangBranch(scene, TEX.overhangBranch(loc.id), loc.palette);
     generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
-    generateShimmerTile(scene, TEX.shimmer(loc.id), 48, loc.palette);
+    generateShimmerRowTile(scene, TEX.shimmerRow(loc.id), loc.palette.shimmer);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
+    generateDockPost(scene, TEX.dockPost(loc.id), loc.palette);
   }
   const allParticleStyles = new Set(LOCATIONS.flatMap((l) => l.particles));
   for (const style of allParticleStyles) generateLocationParticle(scene, TEX.ambient(style), style);
 
-  for (let i = 0; i < 3; i++) generateLilyPad(scene, TEX.lilyPad(i), i);
+  for (let i = 0; i < 3; i++) {
+    generateLilyPad(scene, TEX.lilyPad(i, false), i, false);
+    generateLilyPad(scene, TEX.lilyPad(i, true), i, true);
+  }
   generateBobber(scene, TEX.bobber);
   generateRipple(scene, TEX.ripple);
   generateParticle(scene, TEX.particle("gold"), 0xffd93d, "star");
