@@ -134,32 +134,44 @@ export function makeButton(
   return c;
 }
 
-/** Simple left/right-paged horizontal card row: clamps content.x to card-width steps. */
+/**
+ * A horizontal card row: arrow-button paging by a fixed step, and — since
+ * `content.x` is the single source of truth for scroll position — a real
+ * drag-to-scroll you can freely mix with the buttons, the way any native
+ * mobile scroll view works instead of a step-locked carousel.
+ */
 export class CardPager {
-  private index = 0;
-  constructor(
-    private content: Phaser.GameObjects.Container,
-    private cardStep: number,
-    private viewportW: number,
-    private cardCount: number
-  ) {}
+  private minX: number;
 
-  private maxIndex(): number {
-    const visibleCount = Math.max(1, Math.floor(this.viewportW / this.cardStep));
-    return Math.max(0, this.cardCount - visibleCount);
+  constructor(private content: Phaser.GameObjects.Container, private cardStep: number, viewportW: number, cardCount: number) {
+    this.minX = Math.min(0, viewportW - cardCount * cardStep);
   }
 
   next(): void {
-    this.index = Math.min(this.index + 1, this.maxIndex());
-    this.apply();
+    this.content.x = Phaser.Math.Clamp(this.content.x - this.cardStep, this.minX, 0);
   }
 
   prev(): void {
-    this.index = Math.max(this.index - 1, 0);
-    this.apply();
+    this.content.x = Phaser.Math.Clamp(this.content.x + this.cardStep, this.minX, 0);
   }
 
-  private apply(): void {
-    this.content.x = -this.index * this.cardStep;
+  /** Lets the row be dragged horizontally, like any native mobile scroll view. `parent` is where the invisible drag zone gets added (so it's cleaned up along with the rest of the panel's content). */
+  enableDrag(scene: Phaser.Scene, parent: Phaser.GameObjects.Container, hitX: number, hitY: number, hitW: number, hitH: number): void {
+    if (this.minX >= 0) return; // everything already fits — nothing to scroll
+    const zone = scene.add.rectangle(hitX, hitY, hitW, hitH, 0x000000, 0.001);
+    // Bottom of the stack regardless of call order, so it never swallows
+    // taps meant for the card buttons rendered on top of it.
+    parent.addAt(zone, 0);
+    zone.setInteractive({ draggable: true, useHandCursor: true });
+
+    let startContentX = 0;
+    let startPointerX = 0;
+    zone.on("dragstart", (pointer: Phaser.Input.Pointer) => {
+      startContentX = this.content.x;
+      startPointerX = pointer.x;
+    });
+    zone.on("drag", (pointer: Phaser.Input.Pointer) => {
+      this.content.x = Phaser.Math.Clamp(startContentX + (pointer.x - startPointerX), this.minX, 0);
+    });
   }
 }

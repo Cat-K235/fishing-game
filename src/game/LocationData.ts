@@ -1,7 +1,7 @@
 import { rarityIndex, type Rarity } from "./FishData";
 import { BAITS, baitMaxRarityIndex, type BaitDef } from "./BaitData";
 
-export type ParticleStyle = "fireflies" | "mist" | "gulls" | "motes" | "sparkle";
+export type ParticleStyle = "fireflies" | "mist" | "gulls" | "motes" | "sparkle" | "bubbles" | "foam" | "snow";
 
 export interface LocationPalette {
   skyTop: number;
@@ -25,6 +25,9 @@ export interface LocationDecor {
   edgeTrees: boolean;
 }
 
+/** Discriminates the bespoke one-off ambient cast (frog, waterfall, aurora, etc.) each location gets. */
+export type SceneSpecial = "pond" | "gorge" | "pier" | "abyss" | "crystal";
+
 export interface LocationDef {
   id: string;
   name: string;
@@ -32,8 +35,9 @@ export interface LocationDef {
   minRarity: Rarity;
   maxRarity: Rarity;
   palette: LocationPalette;
-  particle: ParticleStyle;
+  particles: ParticleStyle[];
   decor: LocationDecor;
+  special: SceneSpecial;
 }
 
 export const LOCATIONS: LocationDef[] = [
@@ -44,21 +48,22 @@ export const LOCATIONS: LocationDef[] = [
     minRarity: "common",
     maxRarity: "rare",
     palette: {
-      skyTop: 0x151831,
-      skyMid: 0x4a3466,
-      skyLow: 0xd97a3d,
-      skyHorizon: 0xffcf7a,
+      skyTop: 0xbdeecb,
+      skyMid: 0xd6f0b8,
+      skyLow: 0xf1eda6,
+      skyHorizon: 0xfff6c6,
       mountain: 0x2c2140,
       mountainHaze: 0x4a3f66,
-      treeline: 0x16261f,
-      waterDeep: 0x123b4b,
-      waterMid: 0x184a5c,
-      shimmer: 0xbfe9e8,
+      treeline: 0x1c3a24,
+      waterDeep: 0x234a1f,
+      waterMid: 0x2d5a27,
+      shimmer: 0x4a8c3f,
       dockWood: 0x5b3a29,
       dockWoodDark: 0x3e2618,
     },
-    particle: "fireflies",
+    particles: ["bubbles"],
     decor: { lilyPads: true, edgeTrees: true },
+    special: "pond",
   },
   {
     id: "river-gorge",
@@ -67,21 +72,22 @@ export const LOCATIONS: LocationDef[] = [
     minRarity: "common",
     maxRarity: "epic",
     palette: {
-      skyTop: 0x1c2333,
-      skyMid: 0x3c4a52,
-      skyLow: 0x7c9482,
-      skyHorizon: 0xc9d9a8,
+      skyTop: 0x3a4650,
+      skyMid: 0x5a6b78,
+      skyLow: 0x8a99a3,
+      skyHorizon: 0xc5d0d6,
       mountain: 0x2f3a33,
       mountainHaze: 0x4c5c50,
       treeline: 0x18241c,
-      waterDeep: 0x183d32,
-      waterMid: 0x1e4a3c,
-      shimmer: 0xcdeecb,
+      waterDeep: 0x1c3a3a,
+      waterMid: 0x2a5252,
+      shimmer: 0xa8d8ea,
       dockWood: 0x4a3624,
       dockWoodDark: 0x2e2013,
     },
-    particle: "mist",
+    particles: ["mist", "foam"],
     decor: { lilyPads: false, edgeTrees: false },
+    special: "gorge",
   },
   {
     id: "ocean-pier",
@@ -90,21 +96,22 @@ export const LOCATIONS: LocationDef[] = [
     minRarity: "uncommon",
     maxRarity: "epic",
     palette: {
-      skyTop: 0x1a3a5c,
-      skyMid: 0x3a70a0,
-      skyLow: 0x8bc6e8,
-      skyHorizon: 0xfdf3d0,
+      skyTop: 0x4a2c6d,
+      skyMid: 0xa4468a,
+      skyLow: 0xe6714a,
+      skyHorizon: 0xff9a4d,
       mountain: 0x2c4f70,
       mountainHaze: 0x4d7495,
       treeline: 0x203a4a,
-      waterDeep: 0x134668,
-      waterMid: 0x1a5a80,
+      waterDeep: 0x0f2540,
+      waterMid: 0x1a3a5c,
       shimmer: 0xdff6ff,
       dockWood: 0x6b5642,
       dockWoodDark: 0x40311f,
     },
-    particle: "gulls",
+    particles: ["gulls"],
     decor: { lilyPads: false, edgeTrees: false },
+    special: "pier",
   },
   {
     id: "deep-abyss",
@@ -113,10 +120,10 @@ export const LOCATIONS: LocationDef[] = [
     minRarity: "rare",
     maxRarity: "legendary",
     palette: {
-      skyTop: 0x05070f,
-      skyMid: 0x0d1428,
-      skyLow: 0x1a1030,
-      skyHorizon: 0x2e1a40,
+      skyTop: 0x050a1a,
+      skyMid: 0x050a1a,
+      skyLow: 0x050a1a,
+      skyHorizon: 0x050a1a,
       mountain: 0x0a0d1c,
       mountainHaze: 0x161a2e,
       treeline: 0x05070c,
@@ -126,8 +133,9 @@ export const LOCATIONS: LocationDef[] = [
       dockWood: 0x30271e,
       dockWoodDark: 0x1a1410,
     },
-    particle: "motes",
+    particles: ["motes"],
     decor: { lilyPads: false, edgeTrees: false },
+    special: "abyss",
   },
   {
     id: "crystal-lake",
@@ -136,21 +144,22 @@ export const LOCATIONS: LocationDef[] = [
     minRarity: "epic",
     maxRarity: "legendary",
     palette: {
-      skyTop: 0x1c1440,
-      skyMid: 0x4a3a8a,
-      skyLow: 0x8ee0e8,
-      skyHorizon: 0xffe8f5,
+      skyTop: 0x150a30,
+      skyMid: 0x241454,
+      skyLow: 0x3a1f6e,
+      skyHorizon: 0x4a2a7a,
       mountain: 0x2e2560,
       mountainHaze: 0x5a4a9a,
       treeline: 0x1a2a3a,
-      waterDeep: 0x134262,
-      waterMid: 0x1a5a7a,
-      shimmer: 0xffffff,
+      waterDeep: 0x2a6a72,
+      waterMid: 0x3a8a92,
+      shimmer: 0xb8fff5,
       dockWood: 0x5a4a5c,
       dockWoodDark: 0x352a38,
     },
-    particle: "sparkle",
+    particles: ["snow"],
     decor: { lilyPads: false, edgeTrees: false },
+    special: "crystal",
   },
 ];
 

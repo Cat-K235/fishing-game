@@ -86,6 +86,13 @@ export class GameScene extends Phaser.Scene {
   private bait!: BaitDef;
 
   private world!: Phaser.GameObjects.Container;
+  // Background/midground sit inside `world` and counter its own sway by a
+  // fraction so their NET motion nets out to 0.1x / 0.3x of it while the
+  // foreground (everything added straight to `world`) moves at the full
+  // 1x — a cheap way to get layered parallax without threading a second
+  // coordinate space through every existing gameplay calculation.
+  private bgLayer!: Phaser.GameObjects.Container;
+  private midLayer!: Phaser.GameObjects.Container;
   private swayT = 0;
 
   private waterTile!: Phaser.GameObjects.TileSprite;
@@ -94,6 +101,10 @@ export class GameScene extends Phaser.Scene {
 
   private ambientFish: AmbientFish[] = [];
   private ambientParticles: AmbientParticle[] = [];
+  /** Per-scene bespoke decorations (frog, waterfall, aurora, ...) — repopulated on every buildWorld(). */
+  private specialUpdaters: ((time: number, dt: number) => void)[] = [];
+
+  private transitionRect!: Phaser.GameObjects.Rectangle;
 
   private fisherman!: Fisherman;
 
@@ -170,8 +181,12 @@ export class GameScene extends Phaser.Scene {
     this.world?.destroy();
     this.ambientFish = [];
     this.ambientParticles = [];
+    this.specialUpdaters = [];
 
     this.world = this.add.container(0, 0);
+    this.bgLayer = this.add.container(0, 0);
+    this.midLayer = this.add.container(0, 0);
+    this.world.add([this.bgLayer, this.midLayer]);
 
     const sky = this.add.image(0, 0, TEX.sky(loc.id)).setOrigin(0, 0);
     sky.setDisplaySize(WORLD_W, HORIZON_Y);
@@ -182,6 +197,8 @@ export class GameScene extends Phaser.Scene {
     const treeline = this.add.image(0, HORIZON_Y - 34, TEX.treeline(loc.id)).setOrigin(0, 0);
     treeline.setDisplaySize(WORLD_W, 40);
 
+    this.bgLayer.add([sky, mountains, treeline]);
+
     this.waterTile = this.add
       .tileSprite(0, WATER_TOP, WORLD_W, WATER_BOTTOM - WATER_TOP, TEX.water(loc.id))
       .setOrigin(0, 0);
@@ -190,19 +207,21 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setAlpha(0.35);
 
-    this.world.add([sky, mountains, treeline, this.waterTile, this.shimmerTile]);
+    this.midLayer.add([this.waterTile, this.shimmerTile]);
 
     if (loc.decor.edgeTrees) this.spawnOverhangBranches(loc);
 
     this.spawnAmbientFish(loc);
-    for (const f of this.ambientFish) this.world.add(f.sprite);
+    for (const f of this.ambientFish) this.midLayer.add(f.sprite);
 
     this.lilyLayer = this.add.container(0, 0);
-    this.world.add(this.lilyLayer);
+    this.midLayer.add(this.lilyLayer);
     if (loc.decor.lilyPads) this.spawnLilyPads();
 
     this.spawnAmbientParticles(loc);
-    for (const p of this.ambientParticles) this.world.add(p.sprite);
+    for (const p of this.ambientParticles) this.midLayer.add(p.sprite);
+
+    this.spawnSceneSpecials(loc);
 
     const dockH = WORLD_H - DOCK_TOP;
     const plankW = 40;
@@ -228,14 +247,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private rebuildForLocation(locationId: string): void {
-    this.location = locationById(locationId);
-    this.state = "idle";
-    this.currentFish = null;
-    this.buildWorld(this.location);
-    this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y, this.rod.id);
-    this.world.add(this.fisherman);
-    this.locationText.setText(this.location.name);
-    this.hudPrompt.setText("TAP THE WATER TO CAST");
+    if (!this.transitionRect) {
+      this.transitionRect = this.add.rectangle(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 0x000000, 0).setDepth(80);
+    }
+    this.tweens.add({
+      targets: this.transitionRect,
+      alpha: 1,
+      duration: 400,
+      onComplete: () => {
+        this.location = locationById(locationId);
+        this.state = "idle";
+        this.currentFish = null;
+        this.buildWorld(this.location);
+        this.fisherman = new Fisherman(this, DOCK_CENTER_X, PLAYER_Y, this.rod.id);
+        this.world.add(this.fisherman);
+        this.locationText.setText(this.location.name);
+        this.hudPrompt.setText("TAP THE WATER TO CAST");
+        this.tweens.add({ targets: this.transitionRect, alpha: 0, duration: 400 });
+      },
+    });
   }
 
   // Hand-placed so the composition stays deliberate — clustered near the
@@ -266,7 +296,7 @@ export class GameScene extends Phaser.Scene {
     const key = TEX.overhangBranch(loc.id);
     const left = this.add.image(-4, -4, key).setOrigin(0, 0);
     const right = this.add.image(WORLD_W + 4, -4, key).setOrigin(1, 0).setFlipX(true);
-    this.world.add([left, right]);
+    this.bgLayer.add([left, right]);
   }
 
   private spawnAmbientFish(loc: LocationDef): void {
@@ -317,24 +347,250 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private static readonly PARTICLE_BANDS: Record<
+    ParticleStyle,
+    { yMin: number; yMax: number; vx: [number, number]; vy: [number, number]; count: number; alpha: number }
+  > = {
+    fireflies: { yMin: WATER_BOTTOM - 150, yMax: WATER_BOTTOM - 10, vx: [-6, 6], vy: [-4, 4], count: 10, alpha: 0.9 },
+    mist: { yMin: HORIZON_Y - 15, yMax: HORIZON_Y + 35, vx: [3, 10], vy: [0, 0], count: 6, alpha: 0.5 },
+    gulls: { yMin: 20, yMax: HORIZON_Y - 45, vx: [14, 26], vy: [-1, 1], count: 4, alpha: 0.9 },
+    motes: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-3, 3], vy: [-12, -6], count: 12, alpha: 0.85 },
+    sparkle: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 130, vx: [-2, 2], vy: [-2, 2], count: 12, alpha: 1 },
+    bubbles: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-2, 2], vy: [-16, -8], count: 12, alpha: 0.8 },
+    foam: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 90, vx: [40, 70], vy: [-1, 1], count: 8, alpha: 0.9 },
+    snow: { yMin: 10, yMax: WATER_BOTTOM - 20, vx: [-4, 4], vy: [14, 26], count: 16, alpha: 0.85 },
+  };
+
   private spawnAmbientParticles(loc: LocationDef): void {
-    const bands: Record<ParticleStyle, { yMin: number; yMax: number; vx: [number, number]; vy: [number, number]; count: number; alpha: number }> = {
-      fireflies: { yMin: WATER_BOTTOM - 150, yMax: WATER_BOTTOM - 10, vx: [-6, 6], vy: [-4, 4], count: 10, alpha: 0.9 },
-      mist: { yMin: HORIZON_Y - 15, yMax: HORIZON_Y + 35, vx: [3, 10], vy: [0, 0], count: 6, alpha: 0.5 },
-      gulls: { yMin: 20, yMax: HORIZON_Y - 45, vx: [14, 26], vy: [-1, 1], count: 4, alpha: 0.9 },
-      motes: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-3, 3], vy: [-12, -6], count: 12, alpha: 0.85 },
-      sparkle: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 130, vx: [-2, 2], vy: [-2, 2], count: 12, alpha: 1 },
-    };
-    const cfg = bands[loc.particle];
-    for (let i = 0; i < cfg.count; i++) {
-      const x = Math.random() * WORLD_W;
-      const y = Phaser.Math.Between(cfg.yMin, cfg.yMax);
-      const sprite = this.add.image(x, y, TEX.ambient(loc.id)).setAlpha(cfg.alpha * (0.4 + Math.random() * 0.6));
-      this.ambientParticles.push({
-        sprite,
-        vx: Phaser.Math.FloatBetween(cfg.vx[0], cfg.vx[1]),
-        vy: Phaser.Math.FloatBetween(cfg.vy[0], cfg.vy[1]),
-        seed: Math.random() * 100,
+    for (const style of loc.particles) {
+      const cfg = GameScene.PARTICLE_BANDS[style];
+      for (let i = 0; i < cfg.count; i++) {
+        const x = Math.random() * WORLD_W;
+        const y = Phaser.Math.Between(cfg.yMin, cfg.yMax);
+        const sprite = this.add.image(x, y, TEX.ambient(style)).setAlpha(cfg.alpha * (0.4 + Math.random() * 0.6));
+        this.ambientParticles.push({
+          sprite,
+          vx: Phaser.Math.FloatBetween(cfg.vx[0], cfg.vx[1]),
+          vy: Phaser.Math.FloatBetween(cfg.vy[0], cfg.vy[1]),
+          seed: Math.random() * 100,
+        });
+      }
+    }
+  }
+
+  // -------------------------------------------------------- SCENE SPECIALS
+
+  private spawnSceneSpecials(loc: LocationDef): void {
+    switch (loc.special) {
+      case "pond":
+        this.spawnPondSpecials();
+        break;
+      case "gorge":
+        this.spawnGorgeSpecials(loc);
+        break;
+      case "pier":
+        this.spawnPierSpecials();
+        break;
+      case "abyss":
+        this.spawnAbyssSpecials();
+        break;
+      case "crystal":
+        this.spawnCrystalSpecials();
+        break;
+    }
+  }
+
+  private spawnPondSpecials(): void {
+    for (let i = 0; i < 3; i++) {
+      const cloud = this.add
+        .image(Math.random() * WORLD_W, 18 + Math.random() * 70, TEX.cloud)
+        .setAlpha(0.85)
+        .setScale(0.7 + Math.random() * 0.5);
+      this.bgLayer.add(cloud);
+      const speed = 3 + Math.random() * 3;
+      this.specialUpdaters.push((_time, dt) => {
+        cloud.x -= speed * dt;
+        if (cloud.x < -40) cloud.x = WORLD_W + 40;
+      });
+    }
+
+    const spot = GameScene.LILY_LAYOUT[0];
+    const frog = this.add
+      .sprite(spot.xr * WORLD_W, WATER_TOP + spot.yr * (WATER_BOTTOM - WATER_TOP) - 6, TEX.frog("open"))
+      .setScale(1.1);
+    this.midLayer.add(frog);
+    let blinkTimer = 2 + Math.random() * 2;
+    this.specialUpdaters.push((_time, dt) => {
+      blinkTimer -= dt;
+      if (blinkTimer <= 0) {
+        frog.setTexture(TEX.frog("blink"));
+        this.time.delayedCall(150, () => frog.setTexture(TEX.frog("open")));
+        blinkTimer = 4;
+      }
+    });
+
+    const dragonfly = this.add.image(WORLD_W * 0.5, WATER_TOP + 50, TEX.dragonfly);
+    this.midLayer.add(dragonfly);
+    const baseX = WORLD_W * 0.55;
+    const baseY = WATER_TOP + 55;
+    let phase = Math.random() * 10;
+    this.specialUpdaters.push((_time, dt) => {
+      phase += dt * 0.9;
+      dragonfly.x = baseX + Math.sin(phase) * 55;
+      dragonfly.y = baseY + Math.sin(phase * 2) * 16;
+      dragonfly.setFlipX(Math.cos(phase) < 0);
+    });
+  }
+
+  private spawnGorgeSpecials(loc: LocationDef): void {
+    // These frame the water too (canyon walls run down past the waterline),
+    // not just the sky above it, so they need to render in front of the
+    // water tile rather than behind it — straight onto `world` (the 1x
+    // foreground layer) rather than bgLayer, which the water tile covers.
+    const key = TEX.cliffWall(loc.id);
+    const left = this.add.image(0, 0, key).setOrigin(0, 0);
+    const right = this.add.image(WORLD_W, 0, key).setOrigin(1, 0).setFlipX(true);
+    this.world.add([left, right]);
+
+    const waterfall = this.add.tileSprite(24, HORIZON_Y - 6, 10, 150, TEX.waterfall).setOrigin(0, 0);
+    this.world.add(waterfall);
+    this.specialUpdaters.push((_time, dt) => {
+      waterfall.tilePositionY -= dt * 70;
+    });
+  }
+
+  private spawnPierSpecials(): void {
+    const sunX = WORLD_W * 0.72;
+    const sun = this.add.image(sunX, HORIZON_Y - 6, TEX.sun).setScale(1.1);
+    this.bgLayer.add(sun);
+
+    const reflection = this.add.image(sunX, WATER_TOP + 80, TEX.sun).setScale(0.55, 3.4).setAlpha(0.22);
+    this.midLayer.add(reflection);
+
+    const lighthouse = this.add.image(WORLD_W - 28, HORIZON_Y - 34, TEX.lighthouse).setOrigin(0.5, 1).setAlpha(0.75);
+    this.bgLayer.add(lighthouse);
+
+    const boat = this.add.image(WORLD_W * 0.28, WATER_TOP + 65, TEX.boat).setAlpha(0.85);
+    this.midLayer.add(boat);
+    const boatBaseY = boat.y;
+    let rockT = Math.random() * 10;
+    this.specialUpdaters.push((_time, dt) => {
+      rockT += dt;
+      boat.y = boatBaseY + Math.sin(rockT * 0.8) * 3;
+      boat.rotation = Math.sin(rockT * 0.8) * 0.05;
+    });
+
+    const rope = this.add.image(WORLD_W - 14, DOCK_TOP + 6, TEX.ropeCoil).setOrigin(1, 0);
+    this.world.add(rope);
+  }
+
+  private spawnAbyssSpecials(): void {
+    const surfaceLine = this.add.rectangle(WORLD_W / 2, 3, WORLD_W, 2, 0x1a5c52, 0.8);
+    this.bgLayer.add(surfaceLine);
+    this.specialUpdaters.push((time) => surfaceLine.setAlpha(0.5 + Math.sin(time / 600) * 0.3));
+
+    const coralSpots: [number, number][] = [
+      [22, 0],
+      [WORLD_W - 22, 1],
+    ];
+    for (const [x, variant] of coralSpots) {
+      const coral = this.add.image(x, DOCK_TOP + 2, TEX.coral(variant)).setOrigin(0.5, 1);
+      this.world.add(coral);
+      let swayT = Math.random() * 10;
+      this.specialUpdaters.push((_time, dt) => {
+        swayT += dt;
+        coral.rotation = Math.sin(swayT * 0.6) * 0.06;
+      });
+    }
+
+    // Meant to loom through the water, not vanish behind the opaque water
+    // tile — midLayer (which the water tile is also in, added first) so it
+    // renders in front of the water rather than bgLayer, which is fully
+    // covered by it.
+    const creature = this.add.image(-160, WATER_TOP + 120, TEX.creature).setAlpha(0.7).setVisible(false);
+    this.midLayer.add(creature);
+    let creatureTimer = 8;
+    let creatureActive = false;
+    this.specialUpdaters.push((_time, dt) => {
+      if (!creatureActive) {
+        creatureTimer -= dt;
+        if (creatureTimer <= 0) {
+          creatureActive = true;
+          creature.setVisible(true);
+          creature.x = -160;
+          creature.y = WATER_TOP + 80 + Math.random() * 120;
+        }
+      } else {
+        creature.x += dt * 18;
+        if (creature.x > WORLD_W + 160) {
+          creatureActive = false;
+          creature.setVisible(false);
+          creatureTimer = 30;
+        }
+      }
+    });
+
+    const angler = this.add.image(-40, WATER_TOP + 200, TEX.anglerfish).setVisible(false);
+    this.midLayer.add(angler);
+    let anglerTimer = 10;
+    let anglerActive = false;
+    this.specialUpdaters.push((_time, dt) => {
+      if (!anglerActive) {
+        anglerTimer -= dt;
+        if (anglerTimer <= 0) {
+          anglerActive = true;
+          angler.setVisible(true);
+          angler.x = -40;
+          angler.y = WATER_TOP + 150 + Math.random() * 200;
+        }
+      } else {
+        angler.x += dt * 16;
+        if (angler.x > WORLD_W + 40) {
+          anglerActive = false;
+          angler.setVisible(false);
+          anglerTimer = 14 + Math.random() * 12;
+        }
+      }
+    });
+  }
+
+  private spawnCrystalSpecials(): void {
+    const auroraGfx = this.add.graphics();
+    this.bgLayer.add(auroraGfx);
+    let auroraT = Math.random() * 10;
+    const bands: [number, number][] = [
+      [0x3fd68a, 50],
+      [0x4ac8e0, 95],
+      [0xb98cf2, 140],
+    ];
+    this.specialUpdaters.push((_time, dt) => {
+      auroraT += dt;
+      auroraGfx.clear();
+      bands.forEach(([color, baseY], i) => {
+        auroraGfx.fillStyle(color, 0.14);
+        const wave = Math.sin(auroraT * 0.4 + i * 1.7) * 14;
+        auroraGfx.fillRect(0, baseY + wave, WORLD_W, 24);
+      });
+    });
+
+    for (let i = 0; i < 22; i++) {
+      const star = this.add.image(Math.random() * WORLD_W, Math.random() * (HORIZON_Y - 10), TEX.star);
+      this.bgLayer.add(star);
+      const seed = Math.random() * 10;
+      this.specialUpdaters.push((time) => star.setAlpha(0.3 + Math.abs(Math.sin(time / 700 + seed)) * 0.7));
+    }
+
+    for (const x of [24, WORLD_W - 24]) {
+      const crystal = this.add.image(x, DOCK_TOP, TEX.crystalFormation).setOrigin(0.5, 1);
+      this.world.add(crystal);
+      const glow = this.add.circle(x, DOCK_TOP - 14, 6, 0xb8fff5, 0.25);
+      this.world.add(glow);
+      let pulseT = Math.random() * 10;
+      this.specialUpdaters.push((_time, dt) => {
+        pulseT += dt;
+        const s = 1 + Math.sin(pulseT * 1.2) * 0.5;
+        glow.setScale(s);
+        glow.setAlpha(0.15 + Math.sin(pulseT * 1.2) * 0.1);
       });
     }
   }
@@ -900,6 +1156,14 @@ export class GameScene extends Phaser.Scene {
       this.world.x = Math.sin(this.swayT * 0.6) * 1.6;
       this.world.y = Math.cos(this.swayT * 0.45) * 1.1;
     }
+    // world.x/y (set above, or randomized by the tension shake in
+    // updateReeling) is the "1x" foreground motion. bgLayer/midLayer are
+    // children of world, so they'd otherwise inherit that same 1x — each
+    // subtracts back enough of it to net out to its own slower fraction.
+    this.bgLayer.x = -this.world.x * 0.9;
+    this.bgLayer.y = -this.world.y * 0.9;
+    this.midLayer.x = -this.world.x * 0.7;
+    this.midLayer.y = -this.world.y * 0.7;
 
     this.waterTile.tilePositionX += dt * 9;
     this.shimmerTile.tilePositionX -= dt * 4;
@@ -908,6 +1172,7 @@ export class GameScene extends Phaser.Scene {
     this.updateAmbientFish(dt);
     this.updateLilyPads(time);
     this.updateAmbientParticles(dt, time);
+    for (const fn of this.specialUpdaters) fn(time, dt);
     this.fisherman.updateIdle(dt);
 
     switch (this.state) {
@@ -936,6 +1201,10 @@ export class GameScene extends Phaser.Scene {
     tip.x -= this.world.x;
     tip.y -= this.world.y;
 
+    const glowing = this.location.special === "crystal";
+    const lineColor = glowing ? 0xffffff : 0xe8e4d8;
+    const lineAlpha = glowing ? 1 : 0.8;
+
     // The underwater split only makes sense once a fish is actually
     // dragging the hook down below a fixed surface point. During the cast
     // arc and the idle wait, the bobber itself IS the line's endpoint —
@@ -946,19 +1215,19 @@ export class GameScene extends Phaser.Scene {
       const surfaceX = this.castTo.x;
       const surfaceY = this.castTo.y;
 
-      this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
+      this.line.lineStyle(1.5, lineColor, lineAlpha);
       this.line.beginPath();
       this.line.moveTo(tip.x, tip.y);
       this.line.lineTo(surfaceX, surfaceY);
       this.line.strokePath();
 
-      this.line.lineStyle(1.5, 0xbfe9e8, 0.5);
+      this.line.lineStyle(1.5, glowing ? 0xffffff : 0xbfe9e8, glowing ? 0.7 : 0.5);
       this.line.beginPath();
       this.line.moveTo(surfaceX, surfaceY);
       this.line.lineTo(surfaceX, this.bobberY);
       this.line.strokePath();
     } else {
-      this.line.lineStyle(1.5, 0xe8e4d8, 0.8);
+      this.line.lineStyle(1.5, lineColor, lineAlpha);
       this.line.beginPath();
       this.line.moveTo(tip.x, tip.y);
       this.line.lineTo(this.bobberX, this.bobberY);

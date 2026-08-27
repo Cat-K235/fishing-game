@@ -374,11 +374,13 @@ export function generateLocationParticle(scene: Phaser.Scene, key: string, style
       ctx.fill();
       break;
     case "gulls":
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 1.3;
+      ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(0, s / 2);
-      ctx.quadraticCurveTo(s / 2, 0, s, s / 2);
+      ctx.moveTo(0, s / 2 - 1);
+      ctx.lineTo(s / 2, s / 2 + 2);
+      ctx.lineTo(s, s / 2 - 1);
       ctx.stroke();
       break;
     case "motes":
@@ -405,6 +407,338 @@ export function generateLocationParticle(scene: Phaser.Scene, key: string, style
       ctx.closePath();
       ctx.fill();
       break;
+    case "bubbles":
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, s / 2 - 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.beginPath();
+      ctx.arc(s / 2 - 1.5, s / 2 - 1.5, 1, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "foam":
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillRect(1, s / 2 - 1, 2, 2);
+      ctx.fillRect(s / 2 + 1, s / 2 - 3, 2, 2);
+      ctx.fillRect(s / 2 - 1, s / 2 + 2, 2, 2);
+      break;
+    case "snow":
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(s / 2, 1);
+      ctx.lineTo(s / 2, s - 1);
+      ctx.moveTo(1, s / 2);
+      ctx.lineTo(s - 1, s / 2);
+      ctx.stroke();
+      break;
+  }
+  refresh(scene, key);
+}
+
+// --------------------------------------------------- PER-SCENE SPECIALS
+// One-off bespoke decorations that make each location feel distinct beyond
+// its palette: a cloud/frog/dragonfly for the pond, cliffs/waterfall for
+// the gorge, a sun/lighthouse/boat for the pier, a deep-sea creature and
+// anglerfish for the abyss, and stars/crystals for the lake.
+
+export function generateCloud(scene: Phaser.Scene, key: string): void {
+  const w = 44,
+    h = 20;
+  const ctx = createCtx(scene, key, w, h);
+  const lumps: [number, number, number][] = [
+    [10, 13, 8],
+    [20, 9, 10],
+    [30, 12, 8],
+    [16, 15, 7],
+    [26, 15, 7],
+  ];
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  for (const [cx, cy, r] of lumps) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "rgba(210,220,225,0.5)";
+  ctx.fillRect(4, h - 6, w - 8, 4);
+  refresh(scene, key);
+}
+
+/** Frog sitting on a lily pad — two frames, eyes open / blinking. */
+export function generateFrog(scene: Phaser.Scene, key: string, blink: boolean): void {
+  const w = 16,
+    h = 12;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = "#3f8f4f";
+  ctx.beginPath();
+  ctx.ellipse(w / 2, h - 4, 6, 4.5, 0, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = "#2f6b3c";
+  ctx.beginPath();
+  ctx.arc(w / 2 - 3.5, h - 8, 2.6, 0, Math.PI * 2);
+  ctx.arc(w / 2 + 3.5, h - 8, 2.6, 0, Math.PI * 2);
+  ctx.fill();
+  if (blink) {
+    ctx.strokeStyle = "#12240f";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 4.5, h - 8);
+    ctx.lineTo(w / 2 - 2.5, h - 8);
+    ctx.moveTo(w / 2 + 2.5, h - 8);
+    ctx.lineTo(w / 2 + 4.5, h - 8);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = "#12240f";
+    ctx.beginPath();
+    ctx.arc(w / 2 - 3.5, h - 8, 1, 0, Math.PI * 2);
+    ctx.arc(w / 2 + 3.5, h - 8, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  refresh(scene, key);
+}
+
+export function generateDragonfly(scene: Phaser.Scene, key: string): void {
+  const w = 14,
+    h = 8;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = "rgba(180,230,220,0.55)";
+  ctx.beginPath();
+  ctx.ellipse(w / 2 - 1, h / 2, 5, 2, 0.5, 0, Math.PI * 2);
+  ctx.ellipse(w / 2 + 1, h / 2, 5, 2, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2f7a6b";
+  ctx.fillRect(w / 2 - 1, h / 2 - 1, 2, 5);
+  ctx.fillStyle = "#123a30";
+  ctx.beginPath();
+  ctx.arc(w / 2, h / 2 - 2, 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  refresh(scene, key);
+}
+
+/** A tall jagged rock wall to frame a canyon — origin (0.5, 0) at the top; mirror with flipX for the opposite side. */
+export function generateCliffWall(scene: Phaser.Scene, key: string, w: number, h: number, pal: LocationPalette): void {
+  const ctx = createCtx(scene, key, w, h);
+  let seed = 41;
+  const next = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.mountain));
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  let edge = w * 0.55;
+  ctx.lineTo(edge, 0);
+  for (let y = 0; y <= h; y += 26) {
+    edge = Phaser.Math.Clamp(edge + (next() - 0.5) * w * 0.4, w * 0.25, w * 0.85);
+    ctx.lineTo(edge, y);
+  }
+  ctx.lineTo(edge, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  ctx.fill();
+
+  // A few dithered highlight bands for rocky texture.
+  for (let y = 10; y < h; y += 40) {
+    ditherRect(ctx, 0, y, Math.max(4, edge * 0.4), 6, pal.mountain, pal.mountainHaze, 0.5, 3);
+  }
+  refresh(scene, key);
+}
+
+export function generateWaterfallStreak(scene: Phaser.Scene, key: string): void {
+  const w = 12,
+    h = 24;
+  const ctx = createCtx(scene, key, w, h);
+  for (let y = 0; y < h; y += 4) {
+    ctx.fillStyle = "rgba(230,245,250,0.8)";
+    ctx.fillRect(2, y, 3, 2);
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(6, y + 2, 2, 2);
+  }
+  refresh(scene, key);
+}
+
+export function generateSun(scene: Phaser.Scene, key: string): void {
+  const s = 64;
+  const ctx = createCtx(scene, key, s, s);
+  const rings: [number, string][] = [
+    [s / 2, "rgba(255,170,80,0.18)"],
+    [s / 2.6, "rgba(255,190,100,0.35)"],
+    [s / 3.6, "rgba(255,220,140,0.65)"],
+    [s / 5, "#ffe9b8"],
+  ];
+  for (const [r, color] of rings) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  refresh(scene, key);
+}
+
+export function generateLighthouse(scene: Phaser.Scene, key: string): void {
+  const w = 16,
+    h = 34;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = "rgba(30,20,35,0.75)";
+  ctx.beginPath();
+  ctx.moveTo(w / 2 - 5, h);
+  ctx.lineTo(w / 2 - 3, 8);
+  ctx.lineTo(w / 2 + 3, 8);
+  ctx.lineTo(w / 2 + 5, h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(w / 2 - 4, 4, 8, 5);
+  ctx.beginPath();
+  ctx.moveTo(w / 2 - 5, 4);
+  ctx.lineTo(w / 2, 0);
+  ctx.lineTo(w / 2 + 5, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,217,61,0.8)";
+  ctx.fillRect(w / 2 - 2, 5, 4, 2);
+  refresh(scene, key);
+}
+
+export function generateBoatSilhouette(scene: Phaser.Scene, key: string): void {
+  const w = 46,
+    h = 26;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = "rgba(20,20,30,0.6)";
+  ctx.beginPath();
+  ctx.moveTo(2, h - 6);
+  ctx.quadraticCurveTo(w / 2, h + 2, w - 2, h - 6);
+  ctx.lineTo(w - 6, h - 10);
+  ctx.lineTo(6, h - 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(w / 2 - 1, 2, 2, h - 10);
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 4);
+  ctx.lineTo(w / 2 + 12, h - 11);
+  ctx.lineTo(w / 2, h - 11);
+  ctx.closePath();
+  ctx.fill();
+  refresh(scene, key);
+}
+
+export function generateRopeCoil(scene: Phaser.Scene, key: string): void {
+  const s = 20;
+  const ctx = createCtx(scene, key, s, s);
+  ctx.strokeStyle = "#a8845a";
+  ctx.lineWidth = 2;
+  for (let r = 2; r < s / 2; r += 3.5) {
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, r, 0, Math.PI * 1.7);
+    ctx.stroke();
+  }
+  refresh(scene, key);
+}
+
+export function generateCreatureSilhouette(scene: Phaser.Scene, key: string): void {
+  const w = 140,
+    h = 54;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = "rgba(30,45,70,0.55)";
+  ctx.beginPath();
+  ctx.ellipse(w * 0.45, h / 2, w * 0.42, h * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(w * 0.85, h / 2);
+  ctx.lineTo(w, h / 2 - 16);
+  ctx.lineTo(w * 0.92, h / 2);
+  ctx.lineTo(w, h / 2 + 16);
+  ctx.closePath();
+  ctx.fill();
+  refresh(scene, key);
+}
+
+/** Anglerfish with a small glowing lure on a curved stalk. */
+export function generateAnglerfish(scene: Phaser.Scene, key: string): void {
+  const w = 30,
+    h = 20;
+  const ctx = createCtx(scene, key, w, h);
+  ctx.fillStyle = "#241c2e";
+  ctx.beginPath();
+  ctx.ellipse(w * 0.45, h * 0.6, w * 0.32, h * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(w * 0.15, h * 0.6);
+  ctx.lineTo(0, h * 0.4);
+  ctx.lineTo(0, h * 0.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#241c2e";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.6, h * 0.35);
+  ctx.quadraticCurveTo(w * 0.85, 0, w * 0.95, h * 0.15);
+  ctx.stroke();
+  ctx.fillStyle = "#ffe066";
+  ctx.beginPath();
+  ctx.arc(w * 0.95, h * 0.15, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,224,102,0.35)";
+  ctx.beginPath();
+  ctx.arc(w * 0.95, h * 0.15, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  refresh(scene, key);
+}
+
+export function generateCoral(scene: Phaser.Scene, key: string, variant: number): void {
+  const w = 20,
+    h = 26;
+  const ctx = createCtx(scene, key, w, h);
+  const color = variant % 2 === 0 ? 0x8a2f3f : 0x5a2f6b;
+  ctx.fillStyle = rgbToCss(hexToRgb(color));
+  const stalks = 3;
+  for (let i = 0; i < stalks; i++) {
+    const x = 3 + i * ((w - 6) / (stalks - 1));
+    const stalkH = h * (0.5 + (i % 2) * 0.3);
+    ctx.fillRect(x - 1.5, h - stalkH, 3, stalkH);
+    ctx.fillRect(x - 3.5, h - stalkH, 3, stalkH * 0.4);
+    ctx.fillRect(x + 1.5, h - stalkH * 0.7, 3, stalkH * 0.5);
+  }
+  refresh(scene, key);
+}
+
+export function generateStar(scene: Phaser.Scene, key: string): void {
+  const s = 3;
+  const ctx = createCtx(scene, key, s, s);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, s, s);
+  refresh(scene, key);
+}
+
+export function generateCrystalFormation(scene: Phaser.Scene, key: string): void {
+  const w = 22,
+    h = 30;
+  const ctx = createCtx(scene, key, w, h);
+  const shapes: [number, number, number][] = [
+    [w / 2, h * 0.55, 1],
+    [w * 0.28, h * 0.75, 0.6],
+    [w * 0.75, h * 0.7, 0.7],
+  ];
+  for (const [cx, cyBase, scale] of shapes) {
+    const cy = cyBase;
+    const rw = 5 * scale;
+    const rh = 12 * scale;
+    ctx.fillStyle = "rgba(184,255,245,0.85)";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - rh);
+    ctx.lineTo(cx + rw, cy);
+    ctx.lineTo(cx, cy + rh * 0.3);
+    ctx.lineTo(cx - rw, cy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - rh);
+    ctx.lineTo(cx + rw * 0.35, cy - rh * 0.2);
+    ctx.lineTo(cx, cy);
+    ctx.closePath();
+    ctx.fill();
   }
   refresh(scene, key);
 }
@@ -732,7 +1066,7 @@ export const TEX = {
   overhangBranch: (loc: string) => `tex-overhang-${loc}`,
   water: (loc: string) => `tex-water-${loc}`,
   shimmer: (loc: string) => `tex-shimmer-${loc}`,
-  ambient: (loc: string) => `tex-ambient-${loc}`,
+  ambient: (style: string) => `tex-ambient-${style}`,
   lilyPad: (i: number) => `tex-lilypad-${i}`,
   dockPlank: (loc: string) => `tex-dock-plank-${loc}`,
   bobber: "tex-bobber",
@@ -747,6 +1081,20 @@ export const TEX = {
   baitIcon: (id: string) => `tex-baiticon-${id}`,
   coin: "tex-coin",
   lock: "tex-lock",
+  cloud: "tex-cloud",
+  frog: (frame: "open" | "blink") => `tex-frog-${frame}`,
+  dragonfly: "tex-dragonfly",
+  cliffWall: (loc: string) => `tex-cliffwall-${loc}`,
+  waterfall: "tex-waterfall",
+  sun: "tex-sun",
+  lighthouse: "tex-lighthouse",
+  boat: "tex-boat",
+  ropeCoil: "tex-ropecoil",
+  creature: "tex-creature",
+  anglerfish: "tex-anglerfish",
+  coral: (variant: number) => `tex-coral-${variant}`,
+  star: "tex-star",
+  crystalFormation: "tex-crystal-formation",
 };
 
 const BAIT_ICON_COLORS: Record<string, number> = {
@@ -766,8 +1114,9 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
     generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
     generateShimmerTile(scene, TEX.shimmer(loc.id), 48, loc.palette);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
-    generateLocationParticle(scene, TEX.ambient(loc.id), loc.particle);
   }
+  const allParticleStyles = new Set(LOCATIONS.flatMap((l) => l.particles));
+  for (const style of allParticleStyles) generateLocationParticle(scene, TEX.ambient(style), style);
 
   for (let i = 0; i < 3; i++) generateLilyPad(scene, TEX.lilyPad(i), i);
   generateBobber(scene, TEX.bobber);
@@ -795,4 +1144,27 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
 
   generateCoinIcon(scene, TEX.coin);
   generateLockIcon(scene, TEX.lock);
+
+  // Per-scene specials.
+  generateCloud(scene, TEX.cloud);
+  generateFrog(scene, TEX.frog("open"), false);
+  generateFrog(scene, TEX.frog("blink"), true);
+  generateDragonfly(scene, TEX.dragonfly);
+
+  const gorge = LOCATIONS.find((l) => l.special === "gorge");
+  if (gorge) generateCliffWall(scene, TEX.cliffWall(gorge.id), 70, h, gorge.palette);
+  generateWaterfallStreak(scene, TEX.waterfall);
+
+  generateSun(scene, TEX.sun);
+  generateLighthouse(scene, TEX.lighthouse);
+  generateBoatSilhouette(scene, TEX.boat);
+  generateRopeCoil(scene, TEX.ropeCoil);
+
+  generateCreatureSilhouette(scene, TEX.creature);
+  generateAnglerfish(scene, TEX.anglerfish);
+  generateCoral(scene, TEX.coral(0), 0);
+  generateCoral(scene, TEX.coral(1), 1);
+
+  generateStar(scene, TEX.star);
+  generateCrystalFormation(scene, TEX.crystalFormation);
 }

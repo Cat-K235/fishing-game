@@ -45,6 +45,7 @@ export class ShopPanel extends BottomSheet {
 
     const viewportW = WORLD_W - 32;
     const pager = new CardPager(list, STEP, viewportW, count);
+    pager.enableDrag(scene, this.content, 16 + viewportW / 2, 30 + CARD_H / 2, viewportW, CARD_H);
     if (count * STEP > viewportW) {
       this.content.add(makeButton(scene, 20, 216, 46, 28, "<", 0x8ecae6, () => pager.prev()));
       this.content.add(makeButton(scene, WORLD_W - 66, 216, 46, 28, ">", 0x8ecae6, () => pager.next()));

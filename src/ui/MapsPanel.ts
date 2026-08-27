@@ -29,6 +29,7 @@ export class MapsPanel extends BottomSheet {
 
     const viewportW = WORLD_W - 32;
     const pager = new CardPager(list, STEP, viewportW, LOCATIONS.length);
+    pager.enableDrag(scene, this.content, 16 + viewportW / 2, 4 + CARD_H / 2, viewportW, CARD_H);
     if (LOCATIONS.length * STEP > viewportW) {
       this.content.add(makeButton(scene, 20, 254, 46, 28, "<", 0x8ecae6, () => pager.prev()));
       this.content.add(makeButton(scene, WORLD_W - 66, 254, 46, 28, ">", 0x8ecae6, () => pager.next()));
