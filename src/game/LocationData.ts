@@ -21,8 +21,6 @@ export interface LocationPalette {
 export interface LocationDecor {
   /** Lily pads floating near the dock — only makes sense on still, shallow water. */
   lilyPads: boolean;
-  /** Foreground pines framing the left/right edges — only makes sense somewhere enclosed by forest. */
-  edgeTrees: boolean;
 }
 
 /** Discriminates the bespoke one-off ambient cast (frog, waterfall, aurora, etc.) each location gets. */
@@ -48,10 +46,10 @@ export const LOCATIONS: LocationDef[] = [
     minRarity: "common",
     maxRarity: "rare",
     palette: {
-      skyTop: 0xbdeecb,
-      skyMid: 0xd6f0b8,
-      skyLow: 0xf1eda6,
-      skyHorizon: 0xfff6c6,
+      skyTop: 0x8fe0b8,
+      skyMid: 0xb8e8a8,
+      skyLow: 0xe0e2a0,
+      skyHorizon: 0xfff0b0,
       mountain: 0x2c2140,
       mountainHaze: 0x4a3f66,
       treeline: 0x1c3a24,
@@ -62,7 +60,9 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x5c3620,
     },
     particles: ["bubbles"],
-    decor: { lilyPads: true, edgeTrees: true },
+    // The overhanging-branch corners were a style holdover from before the
+    // reference-matching pass — the cleaner look doesn't call for them.
+    decor: { lilyPads: true },
     special: "pond",
   },
   {
@@ -86,7 +86,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x2e2013,
     },
     particles: ["mist", "foam"],
-    decor: { lilyPads: false, edgeTrees: false },
+    decor: { lilyPads: false },
     special: "gorge",
   },
   {
@@ -110,7 +110,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x40311f,
     },
     particles: ["gulls"],
-    decor: { lilyPads: false, edgeTrees: false },
+    decor: { lilyPads: false },
     special: "pier",
   },
   {
@@ -134,7 +134,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x1a1410,
     },
     particles: ["motes"],
-    decor: { lilyPads: false, edgeTrees: false },
+    decor: { lilyPads: false },
     special: "abyss",
   },
   {
@@ -158,7 +158,7 @@ export const LOCATIONS: LocationDef[] = [
       dockWoodDark: 0x352a38,
     },
     particles: ["snow"],
-    decor: { lilyPads: false, edgeTrees: false },
+    decor: { lilyPads: false },
     special: "crystal",
   },
 ];

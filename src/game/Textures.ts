@@ -129,70 +129,6 @@ export function generateMountains(scene: Phaser.Scene, key: string, w: number, h
   refresh(scene, key);
 }
 
-/**
- * A branch of foliage overhanging from a top corner of the screen — framing
- * the pond like you're looking out from under the treeline. Origin (0, 0),
- * meant for the top-left corner (mirror with flipX for the top-right).
- * Foliage is dithered rather than flat-filled to match the rest of the
- * scene's pixel-art texture instead of reading as smooth vector blobs.
- */
-export function generateOverhangBranch(scene: Phaser.Scene, key: string, pal: LocationPalette): void {
-  const w = 116,
-    h = 150;
-  const ctx = createCtx(scene, key, w, h);
-
-  ctx.strokeStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
-  ctx.lineCap = "round";
-  ctx.lineWidth = 7;
-  ctx.beginPath();
-  ctx.moveTo(0, 2);
-  ctx.quadraticCurveTo(w * 0.34, 6, w * 0.6, h * 0.4);
-  ctx.stroke();
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(w * 0.28, 4);
-  ctx.quadraticCurveTo(w * 0.48, h * 0.16, w * 0.8, h * 0.56);
-  ctx.stroke();
-
-  const clumps: [number, number, number][] = [
-    [0.04, 0.02, 0.34],
-    [0.24, 0.1, 0.3],
-    [0.42, 0.22, 0.28],
-    [0.16, 0.26, 0.26],
-    [0.56, 0.36, 0.24],
-    [0.06, 0.4, 0.2],
-    [0.68, 0.5, 0.18],
-  ];
-
-  let seed = 31;
-  const next = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-
-  for (const [nx, ny, nr] of clumps) {
-    const cx = nx * w;
-    const cy = ny * h;
-    const r = nr * w;
-    const mix = 0.3 + next() * 0.4;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.clip();
-    ditherRect(ctx, cx - r, cy - r, r * 2, r * 2, pal.treeline, pal.mountainHaze, mix, 3);
-    ctx.restore();
-
-    ctx.strokeStyle = rgbToCss(hexToRgb(pal.treeline), 0.9);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  refresh(scene, key);
-}
-
 /** Deterministic per-cell hash in [0, 1) — same inputs always give the same output, so the tile still repeats seamlessly. */
 function cellHash(x: number, y: number, seed: number): number {
   let h = (x * 374761393 + y * 668265263 + seed * 2246822519) | 0;
@@ -370,7 +306,9 @@ export function generateParticle(scene: Phaser.Scene, key: string, color: number
 
 /** Small ambient-life particle, one per location's `particle` style. */
 export function generateLocationParticle(scene: Phaser.Scene, key: string, style: ParticleStyle): void {
-  const s = 10;
+  // Mist needs real room to be a soft, fluffy puff — the shared 10px
+  // canvas made it read as a hard little sparkle instead.
+  const s = style === "mist" ? 26 : 10;
   const ctx = createCtx(scene, key, s, s);
   switch (style) {
     case "fireflies":
@@ -383,12 +321,24 @@ export function generateLocationParticle(scene: Phaser.Scene, key: string, style
       ctx.arc(s / 2, s / 2, 1.6, 0, Math.PI * 2);
       ctx.fill();
       break;
-    case "mist":
-      ctx.fillStyle = "rgba(220,230,225,0.28)";
-      ctx.beginPath();
-      ctx.ellipse(s / 2, s / 2, s / 2, s / 3.2, 0, 0, Math.PI * 2);
-      ctx.fill();
+    case "mist": {
+      // Several low-alpha overlapping circles instead of one hard-edged
+      // ellipse — the overlap builds up a soft, fluffy-looking falloff
+      // toward the edges rather than a crisp boundary.
+      const lumps: [number, number, number][] = [
+        [s * 0.4, s * 0.55, s * 0.3],
+        [s * 0.62, s * 0.45, s * 0.34],
+        [s * 0.5, s * 0.3, s * 0.26],
+        [s * 0.42, s * 0.68, s * 0.24],
+      ];
+      for (const [lx, ly, r] of lumps) {
+        ctx.fillStyle = "rgba(225,235,230,0.16)";
+        ctx.beginPath();
+        ctx.arc(lx, ly, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
+    }
     case "gulls":
       ctx.strokeStyle = "rgba(255,255,255,0.95)";
       ctx.lineWidth = 2.4;
@@ -544,10 +494,13 @@ export function generateCliffWall(scene: Phaser.Scene, key: string, w: number, h
   ctx.fillStyle = rgbToCss(hexToRgb(pal.mountain));
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  let edge = w * 0.55;
+  let edge = w * 0.65;
   ctx.lineTo(edge, 0);
   for (let y = 0; y <= h; y += 26) {
-    edge = Phaser.Math.Clamp(edge + (next() - 0.5) * w * 0.4, w * 0.25, w * 0.85);
+    // Kept consistently substantial (never thinner than 40% of the wall's
+    // own width) so it reads as a canyon wall squeezing the water, not a
+    // thin strip along the edge.
+    edge = Phaser.Math.Clamp(edge + (next() - 0.5) * w * 0.3, w * 0.4, w * 0.92);
     ctx.lineTo(edge, y);
   }
   ctx.lineTo(edge, h);
@@ -1086,7 +1039,6 @@ export const TEX = {
   mountains: (loc: string) => `tex-mountains-${loc}`,
   treeline: (loc: string) => `tex-treeline-${loc}`,
   grassEdge: (loc: string) => `tex-grassedge-${loc}`,
-  overhangBranch: (loc: string) => `tex-overhang-${loc}`,
   water: (loc: string) => `tex-water-${loc}`,
   ambient: (style: string) => `tex-ambient-${style}`,
   lilyPad: (i: number, flower: boolean) => `tex-lilypad-${i}-${flower ? "f" : "n"}`,
@@ -1134,7 +1086,6 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
     generateMountains(scene, TEX.mountains(loc.id), w, 60, loc.palette);
     generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
     generateGrassEdge(scene, TEX.grassEdge(loc.id), w, 8, loc.palette);
-    generateOverhangBranch(scene, TEX.overhangBranch(loc.id), loc.palette);
     generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
     generateDockPost(scene, TEX.dockPost(loc.id), loc.palette);
@@ -1179,7 +1130,7 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
   generateDragonfly(scene, TEX.dragonfly);
 
   const gorge = LOCATIONS.find((l) => l.special === "gorge");
-  if (gorge) generateCliffWall(scene, TEX.cliffWall(gorge.id), 70, h, gorge.palette);
+  if (gorge) generateCliffWall(scene, TEX.cliffWall(gorge.id), 120, h, gorge.palette);
   generateWaterfallStreak(scene, TEX.waterfall);
 
   generateSun(scene, TEX.sun);

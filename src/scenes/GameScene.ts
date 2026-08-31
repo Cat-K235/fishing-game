@@ -215,8 +215,6 @@ export class GameScene extends Phaser.Scene {
 
     this.midLayer.add([grassEdge, this.waterTile]);
 
-    if (loc.decor.edgeTrees) this.spawnOverhangBranches(loc);
-
     this.spawnAmbientFish(loc);
     for (const f of this.ambientFish) this.midLayer.add(f.sprite);
 
@@ -306,13 +304,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private spawnOverhangBranches(loc: LocationDef): void {
-    const key = TEX.overhangBranch(loc.id);
-    const left = this.add.image(-4, -4, key).setOrigin(0, 0);
-    const right = this.add.image(WORLD_W + 4, -4, key).setOrigin(1, 0).setFlipX(true);
-    this.bgLayer.add([left, right]);
-  }
-
   private spawnAmbientFish(loc: LocationDef): void {
     const pool = FISH_SPECIES.filter((f) => f.locationId === loc.id);
     if (pool.length === 0) return;
@@ -370,7 +361,11 @@ export class GameScene extends Phaser.Scene {
     // Bigger and more numerous than the other 10px particles — a thin 10px
     // V is nearly invisible against a busy sunset gradient.
     gulls: { yMin: 20, yMax: HORIZON_Y - 45, vx: [14, 26], vy: [-1, 1], count: 6, alpha: 1, scale: 2.2 },
-    motes: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-3, 3], vy: [-12, -6], count: 12, alpha: 0.85 },
+    // Deep Abyss has no sky — the whole screen is "underwater" per the
+    // brief, so motes rise through the full height instead of stopping at
+    // the horizon line, or the top two-thirds of the scene reads as an
+    // empty void with nothing in it.
+    motes: { yMin: 20, yMax: WATER_BOTTOM - 10, vx: [-3, 3], vy: [-14, -7], count: 22, alpha: 0.85 },
     sparkle: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 130, vx: [-2, 2], vy: [-2, 2], count: 12, alpha: 1 },
     bubbles: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-2, 2], vy: [-16, -8], count: 12, alpha: 0.8 },
     foam: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 90, vx: [40, 70], vy: [-1, 1], count: 8, alpha: 0.9 },
