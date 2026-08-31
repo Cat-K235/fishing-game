@@ -1,27 +1,24 @@
 import Phaser from "phaser";
-import { BottomSheet, TEXT_STYLE, makeButton } from "./BottomSheet";
+import { BottomSheet, TEXT_STYLE, makeButton, VerticalScroller } from "./BottomSheet";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
-import { WORLD_W } from "../game/Constants";
 import { RARITY_COLORS } from "../game/FishData";
 
 const COLS = 3;
 const CELL_W = 108;
 const CELL_H = 96;
-const ROWS_PER_PAGE = 2;
-const PAGE_SIZE = COLS * ROWS_PER_PAGE;
+const FOOTER_H = 46;
+const SHEET_H = 560;
 
 export class SellPanel extends BottomSheet {
   private selected = new Set<string>();
-  private page = 0;
 
   constructor(scene: Phaser.Scene, private economy: Economy, private onSold: (coinsEarned: number) => void) {
-    super(scene, "SELL FISH", 340);
+    super(scene, "SELL FISH", SHEET_H);
   }
 
   protected onOpen(): void {
     this.selected.clear();
-    this.page = 0;
     this.render();
   }
 
@@ -32,19 +29,19 @@ export class SellPanel extends BottomSheet {
 
     if (rows.length === 0) {
       this.content.add(
-        scene.add.text(WORLD_W / 2, 100, "No fish yet —\ngo catch some!", { ...TEXT_STYLE, fontSize: "13px", align: "center" }).setOrigin(0.5)
+        scene.add.text(this.sheetW / 2, 100, "No fish yet —\ngo catch some!", { ...TEXT_STYLE, fontSize: "13px", align: "center" }).setOrigin(0.5)
       );
       return;
     }
 
-    const startX = (WORLD_W - (COLS * CELL_W)) / 2;
+    const startX = (this.sheetW - COLS * CELL_W) / 2;
+    const gridRows = Math.ceil(rows.length / COLS);
+    const contentH = gridRows * CELL_H;
+
     const grid = scene.add.container(startX, 0);
     this.content.add(grid);
 
-    const pageStart = this.page * PAGE_SIZE;
-    const pageRows = rows.slice(pageStart, pageStart + PAGE_SIZE);
-
-    pageRows.forEach((row, i) => {
+    rows.forEach((row, i) => {
       const col = i % COLS;
       const rowIdx = Math.floor(i / COLS);
       const cx = col * CELL_W + CELL_W / 2;
@@ -79,14 +76,14 @@ export class SellPanel extends BottomSheet {
       );
     });
 
-    if (rows.length > PAGE_SIZE) {
-      const maxPage = Math.ceil(rows.length / PAGE_SIZE) - 1;
-      if (this.page > 0) this.content.add(makeButton(scene, 30, 200, 40, 24, "<", 0x8ecae6, () => this.changePage(-1)));
-      if (this.page < maxPage) this.content.add(makeButton(scene, WORLD_W - 30, 200, 40, 24, ">", 0x8ecae6, () => this.changePage(1)));
-    }
+    const viewportH = this.sheetH - 44 - FOOTER_H - 16;
+    this.clipContent(grid, 0, 0, this.sheetW, viewportH);
+    const scroller = new VerticalScroller(grid, viewportH, contentH);
+    scroller.enableDrag(scene, this.content, this.sheetW / 2, viewportH / 2, this.sheetW - 16, viewportH);
 
+    const footerY = viewportH + 24;
     this.content.add(
-      makeButton(scene, WORLD_W / 2 - 90, 236, 160, 30, `SELL SELECTED (${this.selected.size})`, this.selected.size ? 0xffd93d : 0x3a3f4a, () => {
+      makeButton(scene, this.sheetW / 2 - 90, footerY, 160, 30, `SELL SELECTED (${this.selected.size})`, this.selected.size ? 0xffd93d : 0x3a3f4a, () => {
         if (this.selected.size === 0) return;
         const earned = this.economy.sell(Array.from(this.selected));
         this.selected.clear();
@@ -95,17 +92,12 @@ export class SellPanel extends BottomSheet {
       })
     );
     this.content.add(
-      makeButton(scene, WORLD_W / 2 + 90, 236, 140, 30, "SELL ALL", 0x6bcb77, () => {
+      makeButton(scene, this.sheetW / 2 + 90, footerY, 140, 30, "SELL ALL", 0x6bcb77, () => {
         const earned = this.economy.sell();
         this.selected.clear();
         this.onSold(earned);
         this.render();
       })
     );
-  }
-
-  private changePage(delta: number): void {
-    this.page += delta;
-    this.render();
   }
 }

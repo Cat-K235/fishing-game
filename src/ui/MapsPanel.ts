@@ -1,14 +1,14 @@
 import Phaser from "phaser";
-import { BottomSheet, TEXT_STYLE, makeButton, CardPager } from "./BottomSheet";
+import { BottomSheet, TEXT_STYLE, makeButton, VerticalScroller } from "./BottomSheet";
 import { LOCATIONS, recommendedBaitFor } from "../game/LocationData";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
-import { WORLD_W } from "../game/Constants";
 
 const CARD_W = 118;
 const CARD_H = 180;
 const GAP = 10;
-const STEP = CARD_W + GAP;
+const COLS = 2;
+const SHEET_H = 560;
 
 export class MapsPanel extends BottomSheet {
   constructor(
@@ -17,30 +17,32 @@ export class MapsPanel extends BottomSheet {
     private onUnlock: () => void,
     private onTravel: (locationId: string) => void
   ) {
-    super(scene, "MAPS", 300);
+    super(scene, "MAPS", SHEET_H);
   }
 
   protected onOpen(): void {
     const scene = this.scene;
-    const list = scene.add.container(16, 4);
-    this.content.add(list);
+    const gridW = COLS * CARD_W + (COLS - 1) * GAP;
+    const startX = (this.sheetW - gridW) / 2;
+    const rows = Math.ceil(LOCATIONS.length / COLS);
+    const contentH = rows * (CARD_H + GAP) - GAP;
 
+    const list = scene.add.container(startX, 0);
+    this.content.add(list);
     LOCATIONS.forEach((_loc, i) => this.buildCard(list, i));
 
-    const viewportW = WORLD_W - 32;
-    const pager = new CardPager(list, STEP, viewportW, LOCATIONS.length);
-    pager.enableDrag(scene, this.content, 16 + viewportW / 2, 4 + CARD_H / 2, viewportW, CARD_H);
-    if (LOCATIONS.length * STEP > viewportW) {
-      this.content.add(makeButton(scene, 20, 254, 46, 28, "<", 0x8ecae6, () => pager.prev()));
-      this.content.add(makeButton(scene, WORLD_W - 66, 254, 46, 28, ">", 0x8ecae6, () => pager.next()));
-    }
+    const viewportH = this.sheetH - 44 - 16;
+    this.clipContent(list, 0, 0, this.sheetW, viewportH);
+    const scroller = new VerticalScroller(list, viewportH, contentH);
+    scroller.enableDrag(scene, this.content, this.sheetW / 2, viewportH / 2, this.sheetW - 16, viewportH);
   }
 
   private buildCard(list: Phaser.GameObjects.Container, index: number): void {
     const scene = this.scene;
     const loc = LOCATIONS[index];
-    const x = index * STEP;
-    const card = scene.add.container(x, 0);
+    const col = index % COLS;
+    const row = Math.floor(index / COLS);
+    const card = scene.add.container(col * (CARD_W + GAP), row * (CARD_H + GAP));
     list.add(card);
 
     const unlocked = this.economy.isLocationUnlocked(loc.id);

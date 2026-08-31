@@ -134,6 +134,12 @@ export class GameScene extends Phaser.Scene {
   private reelState: ReelState = { progress: 0, tension: 0 };
   private reelGrace = 0;
   private fightT = 0;
+  // Toggled by tapping during the fight instead of read from the pointer's
+  // held-down state — on a touchscreen you only have one finger, so holding
+  // to reel made it physically impossible to also tap the mute button or
+  // side menu mid-fight. A tap now flips this and keeps reeling until the
+  // next tap, freeing the pointer for everything else in between.
+  private holdReel = false;
   private fightSwaySeed = 0;
   private reelTickAccum = 0;
   /** 0..1 — ramps up while the fish is actively resisting (not being held, fighting hard) and eases back down otherwise. */
@@ -744,6 +750,7 @@ export class GameScene extends Phaser.Scene {
   private wireInput(): void {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (this.state === "idle" && !this.anyPanelOpen()) this.startCast(pointer.x, pointer.y);
+      else if (this.state === "reeling") this.toggleHoldReel();
     });
   }
 
@@ -851,6 +858,7 @@ export class GameScene extends Phaser.Scene {
     this.hookedFishRunT = 0;
     this.biteSinkT = 0;
     this.tensionVisible = true;
+    this.holdReel = false;
 
     this.bobberY = this.castTo.y + 12;
     this.bobber.setScale(0.8, 1.3);
@@ -868,7 +876,13 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(120, 0.006);
     this.audio.bitePing();
     this.telegram.haptic("medium");
-    this.hudPrompt.setText("HOLD TO REEL!");
+    this.hudPrompt.setText("TAP TO REEL!");
+  }
+
+  private toggleHoldReel(): void {
+    this.holdReel = !this.holdReel;
+    this.hudPrompt.setText(this.holdReel ? "TAP TO REST" : "TAP TO REEL!");
+    this.telegram.haptic("light");
   }
 
   // -------------------------------------------------------------- REELING
@@ -881,7 +895,7 @@ export class GameScene extends Phaser.Scene {
       Math.sin(this.fightT * fish.fightSpeed * 5.3 + this.fightSwaySeed) * 0.2;
 
     const t = Phaser.Math.Clamp(this.reelState.progress / 100, 0, 1);
-    const holding = this.input.activePointer.isDown;
+    const holding = this.holdReel;
 
     // Right after the bite the hook is still essentially at the surface —
     // it sinks down to fight depth over BITE_SINK_SECONDS rather than
@@ -1018,7 +1032,12 @@ export class GameScene extends Phaser.Scene {
         fishSprite.x = Phaser.Math.Linear(startX, endX, t);
         fishSprite.y = Phaser.Math.Linear(startY, endY, t) - Math.sin(t * Math.PI) * arcHeight;
         fishSprite.rotation = Phaser.Math.Linear(0, Math.PI * 2, t);
+        // The bobber's gone, but the line shouldn't just freeze mid-air — it
+        // keeps tracking the fish as it's reeled back in, then disappears
+        // the instant it lands rather than lingering as a stray line.
+        this.drawLineTo(fishSprite.x, fishSprite.y);
         if (t >= 1) {
+          this.line.clear();
           flightTimer.remove(false);
           this.onFishLanded(fish, fishSprite);
         }
@@ -1109,8 +1128,27 @@ export class GameScene extends Phaser.Scene {
     this.dismissHookedFish();
 
     this.spawnRipple(this.bobberX, this.bobberY, 0);
-    this.bobber.setVisible(false);
     this.telegram.haptic("light");
+
+    const snapBackX = DOCK_CENTER_X;
+    const snapBackY = PLAYER_Y;
+    this.tweens.add({
+      targets: this.bobber,
+      x: snapBackX,
+      y: snapBackY,
+      scaleX: 0.6,
+      scaleY: 1.5,
+      duration: 260,
+      ease: "Back.In",
+      onUpdate: () => {
+        this.bobberX = this.bobber.x;
+        this.bobberY = this.bobber.y;
+      },
+      onComplete: () => {
+        this.bobber.setVisible(false);
+        this.bobber.setScale(1);
+      },
+    });
 
     this.time.delayedCall(750, () => this.resetToIdle());
   }
@@ -1207,11 +1245,30 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private drawLine(): void {
-    this.line.clear();
+  private getRodTipLocal(): { x: number; y: number } {
     const tip = this.fisherman.getRodTipWorld();
     tip.x -= this.world.x;
     tip.y -= this.world.y;
+    return tip;
+  }
+
+  /** Single straight segment from the rod tip to an arbitrary point — used to keep the
+   * line following a fish that's already flying back to the player after a catch, instead
+   * of leaving a dangling line frozen where the bobber vanished. */
+  private drawLineTo(x: number, y: number): void {
+    const tip = this.getRodTipLocal();
+    const glowing = this.location.special === "crystal";
+    this.line.clear();
+    this.line.lineStyle(1.5, glowing ? 0xffffff : 0xe8e4d8, glowing ? 1 : 0.8);
+    this.line.beginPath();
+    this.line.moveTo(tip.x, tip.y);
+    this.line.lineTo(x, y);
+    this.line.strokePath();
+  }
+
+  private drawLine(): void {
+    this.line.clear();
+    const tip = this.getRodTipLocal();
 
     const glowing = this.location.special === "crystal";
     const lineColor = glowing ? 0xffffff : 0xe8e4d8;

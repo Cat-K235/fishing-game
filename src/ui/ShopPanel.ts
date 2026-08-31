@@ -1,15 +1,16 @@
 import Phaser from "phaser";
-import { BottomSheet, TEXT_STYLE, drawStatBar, makeButton, CardPager } from "./BottomSheet";
+import { BottomSheet, TEXT_STYLE, drawStatBar, makeButton, VerticalScroller } from "./BottomSheet";
 import { RODS, type RodDef } from "../game/RodData";
 import { BAITS, type BaitDef } from "../game/BaitData";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
-import { WORLD_W } from "../game/Constants";
 
 const CARD_W = 104;
 const CARD_H = 176;
 const GAP = 10;
-const STEP = CARD_W + GAP;
+const COLS = 2;
+const TABS_H = 34;
+const SHEET_H = 560;
 
 type Tab = "bait" | "rods";
 
@@ -17,7 +18,7 @@ export class ShopPanel extends BottomSheet {
   private tab: Tab = "bait";
 
   constructor(scene: Phaser.Scene, private economy: Economy, private onChange: () => void) {
-    super(scene, "SHOP", 300);
+    super(scene, "SHOP", SHEET_H);
   }
 
   protected onOpen(): void {
@@ -33,29 +34,31 @@ export class ShopPanel extends BottomSheet {
         this.tab = tab;
         this.render();
       });
-    this.content.add(tabBtn("BAIT", "bait", WORLD_W / 2 - 54));
-    this.content.add(tabBtn("RODS", "rods", WORLD_W / 2 + 54));
+    this.content.add(tabBtn("BAIT", "bait", this.sheetW / 2 - 54));
+    this.content.add(tabBtn("RODS", "rods", this.sheetW / 2 + 54));
 
-    const list = scene.add.container(16, 30);
+    const items = this.tab === "bait" ? BAITS : RODS;
+    const gridW = COLS * CARD_W + (COLS - 1) * GAP;
+    const startX = (this.sheetW - gridW) / 2;
+    const rows = Math.ceil(items.length / COLS);
+    const contentH = rows * (CARD_H + GAP) - GAP;
+
+    const list = scene.add.container(startX, TABS_H);
     this.content.add(list);
-
-    const count = this.tab === "bait" ? BAITS.length : RODS.length;
     if (this.tab === "bait") BAITS.forEach((b, i) => this.buildBaitCard(list, b, i));
     else RODS.forEach((r, i) => this.buildRodCard(list, r, i));
 
-    const viewportW = WORLD_W - 32;
-    const pager = new CardPager(list, STEP, viewportW, count);
-    pager.enableDrag(scene, this.content, 16 + viewportW / 2, 30 + CARD_H / 2, viewportW, CARD_H);
-    if (count * STEP > viewportW) {
-      this.content.add(makeButton(scene, 20, 216, 46, 28, "<", 0x8ecae6, () => pager.prev()));
-      this.content.add(makeButton(scene, WORLD_W - 66, 216, 46, 28, ">", 0x8ecae6, () => pager.next()));
-    }
+    const viewportH = this.sheetH - 44 - TABS_H - 16;
+    this.clipContent(list, 0, TABS_H, this.sheetW, viewportH);
+    const scroller = new VerticalScroller(list, viewportH, contentH);
+    scroller.enableDrag(scene, this.content, this.sheetW / 2, TABS_H + viewportH / 2, this.sheetW - 16, viewportH);
   }
 
   private buildBaitCard(list: Phaser.GameObjects.Container, bait: BaitDef, index: number): void {
     const scene = this.scene;
-    const x = index * STEP;
-    const card = scene.add.container(x, 0);
+    const col = index % COLS;
+    const row = Math.floor(index / COLS);
+    const card = scene.add.container(col * (CARD_W + GAP), row * (CARD_H + GAP));
     list.add(card);
 
     const owned = this.economy.ownsBait(bait.id);
@@ -122,8 +125,9 @@ export class ShopPanel extends BottomSheet {
 
   private buildRodCard(list: Phaser.GameObjects.Container, rod: RodDef, index: number): void {
     const scene = this.scene;
-    const x = index * STEP;
-    const card = scene.add.container(x, 0);
+    const col = index % COLS;
+    const row = Math.floor(index / COLS);
+    const card = scene.add.container(col * (CARD_W + GAP), row * (CARD_H + GAP));
     list.add(card);
 
     const owned = this.economy.ownsRod(rod.id);
