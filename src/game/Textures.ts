@@ -390,12 +390,12 @@ export function generateLocationParticle(scene: Phaser.Scene, key: string, style
       ctx.fill();
       break;
     case "gulls":
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
-      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 2.4;
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(0, s / 2 - 1);
-      ctx.lineTo(s / 2, s / 2 + 2);
+      ctx.lineTo(s / 2, s / 2 + 2.5);
       ctx.lineTo(s, s / 2 - 1);
       ctx.stroke();
       break;
@@ -740,7 +740,10 @@ export function generateCrystalFormation(scene: Phaser.Scene, key: string): void
     const cy = cyBase;
     const rw = 5 * scale;
     const rh = 12 * scale;
-    ctx.fillStyle = "rgba(184,255,245,0.85)";
+    // A deep saturated blue body (not the same pale cyan as the water it
+    // sits in front of — that made it invisible) with a dark outline and a
+    // bright highlight facet, so it reads against any water tone.
+    ctx.fillStyle = "rgba(45,110,190,0.92)";
     ctx.beginPath();
     ctx.moveTo(cx, cy - rh);
     ctx.lineTo(cx + rw, cy);
@@ -748,7 +751,10 @@ export function generateCrystalFormation(scene: Phaser.Scene, key: string): void
     ctx.lineTo(cx - rw, cy);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.strokeStyle = "rgba(10,25,50,0.85)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
     ctx.beginPath();
     ctx.moveTo(cx, cy - rh);
     ctx.lineTo(cx + rw * 0.35, cy - rh * 0.2);

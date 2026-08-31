@@ -54,6 +54,9 @@ interface AmbientParticle {
   vx: number;
   vy: number;
   seed: number;
+  /** Its own band, for wrap-around — not every particle style lives in the water column (e.g. gulls live in the sky). */
+  yMin: number;
+  yMax: number;
 }
 
 const MUTED_KEY = "pixelfish.muted";
@@ -360,11 +363,13 @@ export class GameScene extends Phaser.Scene {
 
   private static readonly PARTICLE_BANDS: Record<
     ParticleStyle,
-    { yMin: number; yMax: number; vx: [number, number]; vy: [number, number]; count: number; alpha: number }
+    { yMin: number; yMax: number; vx: [number, number]; vy: [number, number]; count: number; alpha: number; scale?: number }
   > = {
     fireflies: { yMin: WATER_BOTTOM - 150, yMax: WATER_BOTTOM - 10, vx: [-6, 6], vy: [-4, 4], count: 10, alpha: 0.9 },
     mist: { yMin: HORIZON_Y - 15, yMax: HORIZON_Y + 35, vx: [3, 10], vy: [0, 0], count: 6, alpha: 0.5 },
-    gulls: { yMin: 20, yMax: HORIZON_Y - 45, vx: [14, 26], vy: [-1, 1], count: 4, alpha: 0.9 },
+    // Bigger and more numerous than the other 10px particles — a thin 10px
+    // V is nearly invisible against a busy sunset gradient.
+    gulls: { yMin: 20, yMax: HORIZON_Y - 45, vx: [14, 26], vy: [-1, 1], count: 6, alpha: 1, scale: 2.2 },
     motes: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-3, 3], vy: [-12, -6], count: 12, alpha: 0.85 },
     sparkle: { yMin: WATER_TOP + 10, yMax: WATER_TOP + 130, vx: [-2, 2], vy: [-2, 2], count: 12, alpha: 1 },
     bubbles: { yMin: WATER_TOP + 20, yMax: WATER_BOTTOM - 10, vx: [-2, 2], vy: [-16, -8], count: 12, alpha: 0.8 },
@@ -378,12 +383,17 @@ export class GameScene extends Phaser.Scene {
       for (let i = 0; i < cfg.count; i++) {
         const x = Math.random() * WORLD_W;
         const y = Phaser.Math.Between(cfg.yMin, cfg.yMax);
-        const sprite = this.add.image(x, y, TEX.ambient(style)).setAlpha(cfg.alpha * (0.4 + Math.random() * 0.6));
+        const sprite = this.add
+          .image(x, y, TEX.ambient(style))
+          .setAlpha(cfg.alpha * (0.4 + Math.random() * 0.6))
+          .setScale(cfg.scale ?? 1);
         this.ambientParticles.push({
           sprite,
           vx: Phaser.Math.FloatBetween(cfg.vx[0], cfg.vx[1]),
           vy: Phaser.Math.FloatBetween(cfg.vy[0], cfg.vy[1]),
           seed: Math.random() * 100,
+          yMin: cfg.yMin,
+          yMax: cfg.yMax,
         });
       }
     }
@@ -1298,8 +1308,11 @@ export class GameScene extends Phaser.Scene {
       p.sprite.y += p.vy * dt;
       if (p.sprite.x < -10) p.sprite.x = WORLD_W + 10;
       if (p.sprite.x > WORLD_W + 10) p.sprite.x = -10;
-      if (p.sprite.y < WATER_TOP - 10) p.sprite.y = WATER_BOTTOM;
-      if (p.sprite.y > WATER_BOTTOM + 10) p.sprite.y = WATER_TOP;
+      // Wrap within its OWN band, not the water column — gulls live in the
+      // sky, not underwater, so wrapping them against WATER_TOP/BOTTOM was
+      // teleporting every one of them into the water on the first frame.
+      if (p.sprite.y < p.yMin - 10) p.sprite.y = p.yMax;
+      if (p.sprite.y > p.yMax + 10) p.sprite.y = p.yMin;
       p.sprite.setAlpha(0.4 + Math.abs(Math.sin(time / 500 + p.seed)) * 0.5);
     }
   }
