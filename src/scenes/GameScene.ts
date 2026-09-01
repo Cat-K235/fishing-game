@@ -1263,6 +1263,11 @@ export class GameScene extends Phaser.Scene {
     this.midLayer.x = -this.world.x * 0.7;
     this.midLayer.y = -this.world.y * 0.7;
 
+    // Slow drift of the water tile's own texture — a living surface without
+    // the shimmer lines/waves that were tried before and reverted.
+    this.waterTile.tilePositionX += dt * 3;
+    this.waterTile.tilePositionY += dt * 1.2;
+
     this.updateAmbientFish(dt);
     this.updateLilyPads(time);
     this.updateAmbientParticles(dt, time);

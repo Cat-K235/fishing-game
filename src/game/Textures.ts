@@ -145,11 +145,31 @@ function cellHash(x: number, y: number, seed: number): number {
   return (h >>> 0) / 4294967295;
 }
 
-/** A flat, un-textured water fill — motion comes entirely from the separate per-scene shimmer rows/lines drawn on top, not from noise baked into the base tile. */
+/**
+ * A base water fill plus a sparse deterministic fleck of slightly darker and
+ * lighter cells, so the surface isn't one flat color. Liveliness comes from
+ * slowly drifting this tile's UV in the scene (see GameScene's update loop),
+ * not from visible shimmer lines/waves baked into the texture itself — that
+ * was tried before and explicitly reverted for looking wrong.
+ */
 export function generateWaterTile(scene: Phaser.Scene, key: string, size: number, pal: LocationPalette): void {
   const ctx = createCtx(scene, key, size, size);
   ctx.fillStyle = rgbToCss(hexToRgb(pal.waterMid));
   ctx.fillRect(0, 0, size, size);
+
+  const block = 2;
+  for (let y = 0; y < size; y += block) {
+    for (let x = 0; x < size; x += block) {
+      const n = cellHash(x / block, y / block, 31);
+      if (n > 0.94) {
+        ctx.fillStyle = rgbToCss(hexToRgb(pal.shimmer), 0.2);
+        ctx.fillRect(x, y, block, block);
+      } else if (n > 0.82 || n < 0.1) {
+        ctx.fillStyle = rgbToCss(hexToRgb(pal.waterDeep), 0.4);
+        ctx.fillRect(x, y, block, block);
+      }
+    }
+  }
   refresh(scene, key);
 }
 
@@ -1183,7 +1203,7 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
     generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
     generateGrassEdge(scene, TEX.grassEdge(loc.id), w, 8, loc.palette);
     for (let i = 0; i < 3; i++) generateTree(scene, TEX.tree(loc.id, i), loc.palette, i * 37 + 5);
-    generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
+    generateWaterTile(scene, TEX.water(loc.id), 48, loc.palette);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
     generateDockPost(scene, TEX.dockPost(loc.id), loc.palette);
   }
