@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { BottomSheet, TEXT_STYLE, drawStatBar, makeButton, VerticalScroller } from "./BottomSheet";
 import { RODS, type RodDef } from "../game/RodData";
-import { BAITS, type BaitDef } from "../game/BaitData";
+import { BAITS, BAIT_PACK_SIZE, UNLIMITED_BAIT_ID, type BaitDef } from "../game/BaitData";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
 
@@ -23,6 +23,12 @@ export class ShopPanel extends BottomSheet {
 
   protected onOpen(): void {
     this.render();
+  }
+
+  /** Opens straight to the BAIT tab regardless of whatever tab was last active — used by the HUD bait indicator. */
+  openToBait(): void {
+    this.tab = "bait";
+    this.open();
   }
 
   private render(): void {
@@ -68,65 +74,75 @@ export class ShopPanel extends BottomSheet {
     const card = scene.add.container(col * (CARD_W + GAP), row * (CARD_H + GAP));
     list.add(card);
 
-    const owned = this.economy.ownsBait(bait.id);
-    const equipped = this.economy.equippedBaitId === bait.id;
+    const unlimited = bait.id === UNLIMITED_BAIT_ID;
+    const count = this.economy.baitCount(bait.id);
+    const active = this.economy.equippedBaitId === bait.id;
     const affordable = this.economy.coins >= bait.cost;
-    const locked = !owned && !affordable;
+    const outOfStock = !unlimited && count <= 0;
 
     const bg = scene.add
-      .rectangle(0, 0, CARD_W, CARD_H, locked ? 0x181a22 : 0x22273a)
+      .rectangle(0, 0, CARD_W, CARD_H, 0x22273a)
       .setOrigin(0, 0)
-      .setStrokeStyle(2, equipped ? 0x6bcb77 : 0x000000, equipped ? 1 : 0.5);
+      .setStrokeStyle(2, active ? 0x6bcb77 : 0x000000, active ? 1 : 0.5);
     card.add(bg);
 
-    const icon = scene.add.image(CARD_W / 2, 34, TEX.baitIcon(bait.id)).setAlpha(locked ? 0.35 : 1);
+    const icon = scene.add.image(CARD_W / 2, 30, TEX.baitIcon(bait.id)).setAlpha(outOfStock ? 0.4 : 1);
     card.add(icon);
 
     const name = scene.add
-      .text(CARD_W / 2, 60, bait.name, { ...TEXT_STYLE, fontSize: "11px", color: locked ? "#6b6f7a" : "#f4f1de" })
+      .text(CARD_W / 2, 52, bait.name, { ...TEXT_STYLE, fontSize: "11px", color: outOfStock ? "#6b6f7a" : "#f4f1de" })
       .setOrigin(0.5, 0);
     card.add(name);
 
     const rarePct = bait.rareBonusPct / 0.4;
-    card.add(scene.add.text(8, 86, "RARE", { ...TEXT_STYLE, fontSize: "9px" }));
-    card.add(drawStatBar(scene, 36, 91, CARD_W - 44, locked ? rarePct * 0.4 : rarePct, 0xffd93d));
+    card.add(scene.add.text(8, 72, "RARE", { ...TEXT_STYLE, fontSize: "9px" }));
+    card.add(drawStatBar(scene, 36, 77, CARD_W - 44, rarePct, 0xffd93d));
     card.add(
       scene.add
-        .text(CARD_W / 2, 106, `UP TO ${bait.maxRarity.toUpperCase()}`, { ...TEXT_STYLE, fontSize: "8px", color: "#9aa0b4" })
+        .text(CARD_W / 2, 88, `UP TO ${bait.maxRarity.toUpperCase()}`, { ...TEXT_STYLE, fontSize: "8px", color: "#9aa0b4" })
         .setOrigin(0.5, 0)
     );
 
-    const costText = equipped || owned ? "" : `${bait.cost}c`;
-    if (costText) {
-      card.add(scene.add.text(CARD_W / 2, 134, costText, { ...TEXT_STYLE, fontSize: "12px", color: "#ffd93d" }).setOrigin(0.5));
-    }
-    if (locked) {
-      card.add(scene.add.text(CARD_W / 2, 150, `NEED ${bait.cost}c`, { ...TEXT_STYLE, fontSize: "9px", color: "#e63946" }).setOrigin(0.5));
+    const stockLabel = unlimited ? "UNLIMITED" : `OWNED: ${count}`;
+    card.add(
+      scene.add
+        .text(CARD_W / 2, 102, stockLabel, { ...TEXT_STYLE, fontSize: "9px", color: outOfStock ? "#e63946" : "#9aa0b4" })
+        .setOrigin(0.5, 0)
+    );
+
+    if (!unlimited) {
+      card.add(
+        makeButton(
+          scene,
+          CARD_W / 2,
+          124,
+          CARD_W - 16,
+          22,
+          `BUY ${BAIT_PACK_SIZE} · ${bait.cost}c`,
+          affordable ? 0xffd93d : 0x3a3f4a,
+          () => {
+            if (this.economy.buyBaitPack(bait.id, bait.cost, BAIT_PACK_SIZE)) {
+              this.onChange();
+              this.render();
+            }
+          }
+        )
+      );
     }
 
-    const btnY = CARD_H - 20;
-    if (equipped) {
-      card.add(makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "EQUIPPED", 0x6b6f7a, () => {}));
-    } else if (owned) {
+    const selectY = CARD_H - 20;
+    if (active) {
+      card.add(makeButton(scene, CARD_W / 2, selectY, CARD_W - 16, 26, "ACTIVE", 0x6bcb77, () => {}));
+    } else if (outOfStock) {
+      card.add(makeButton(scene, CARD_W / 2, selectY, CARD_W - 16, 26, "OUT OF STOCK", 0x3a3f4a, () => {}));
+    } else {
       card.add(
-        makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "EQUIP", 0x8ecae6, () => {
+        makeButton(scene, CARD_W / 2, selectY, CARD_W - 16, 26, "SELECT", 0x8ecae6, () => {
           this.economy.equipBait(bait.id);
           this.onChange();
           this.render();
         })
       );
-    } else if (affordable) {
-      card.add(
-        makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "BUY", 0xffd93d, () => {
-          if (this.economy.buyBait(bait.id, bait.cost)) {
-            this.economy.equipBait(bait.id);
-            this.onChange();
-            this.render();
-          }
-        })
-      );
-    } else {
-      card.add(makeButton(scene, CARD_W / 2, btnY, CARD_W - 16, 26, "LOCKED", 0x3a3f4a, () => {}));
     }
   }
 

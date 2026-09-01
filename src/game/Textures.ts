@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FISH_SPECIES } from "./FishData";
+import { FISH_SPECIES, SPECIAL_CATCHES } from "./FishData";
 import { LOCATIONS, type LocationPalette, type ParticleStyle } from "./LocationData";
 import { RODS, type RodDef } from "./RodData";
 import { BAITS } from "./BaitData";
@@ -1226,6 +1226,9 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
 
   for (const fish of FISH_SPECIES) {
     generateFishTexture(scene, TEX.fish(fish.id), fish.bodyLength, fish.colors);
+  }
+  for (const special of SPECIAL_CATCHES) {
+    generateFishTexture(scene, TEX.fish(special.id), special.bodyLength, special.colors);
   }
 
   generateCharacterLegs(scene, TEX.charLegs);

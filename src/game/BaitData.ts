@@ -13,6 +13,14 @@ export interface BaitDef {
   maxRarity: Rarity;
 }
 
+// Plain Worm is the one exception to the ammo system below: free and
+// unlimited, so a player who's burned through every other bait always has
+// something to cast with rather than getting soft-locked.
+export const UNLIMITED_BAIT_ID = "plain-worm";
+
+/** Every paid bait is bought in packs, not one at a time — `cost` is the price for one pack. */
+export const BAIT_PACK_SIZE = 5;
+
 export const BAITS: BaitDef[] = [
   { id: "plain-worm", name: "Plain Worm", cost: 0, rareBonusPct: 0, maxRarity: "uncommon" },
   { id: "fat-grub", name: "Fat Grub", cost: 500, rareBonusPct: 0.08, maxRarity: "rare" },

@@ -14,6 +14,16 @@ export const RARITY_COLORS: Record<Rarity, number> = {
   legendary: 0xffd93d,
 };
 
+/**
+ * Regular fish are undefined/"fish". The rest are one-off catches rolled
+ * separately from a location's normal pool (see GameScene.rollSpecialCatch)
+ * — they reuse the exact same fight/reel pipeline, just resolved
+ * differently on landing (GameScene.onFishLanded): junk gives nothing and
+ * doesn't touch the Fishdex, a rod-drop grants a rod instead of a fish, and
+ * a shark is a real (big, dramatic) catch.
+ */
+export type CatchKind = "fish" | "junk" | "rod-drop" | "shark";
+
 export interface FishSpecies {
   id: string;
   name: string;
@@ -33,6 +43,8 @@ export interface FishSpecies {
   colors: { body: number; belly: number; fin: number };
   /** Coins earned when sold from the inventory. */
   sellValue: number;
+  /** Defaults to a normal fish when omitted. */
+  kind?: CatchKind;
 }
 
 export const FISH_SPECIES: FishSpecies[] = [
@@ -453,8 +465,85 @@ export const FISH_SPECIES: FishSpecies[] = [
   },
 ];
 
+/**
+ * One-off catches, rolled separately from a location's normal fish pool —
+ * kept out of FISH_SPECIES entirely so they never pollute the Fishdex
+ * count, quest "catch a fish" stats, or the sell-off inventory. `locationId`
+ * is unused (never location-filtered) but kept to satisfy the shared shape.
+ */
+export const JUNK_ITEMS: FishSpecies[] = [
+  {
+    id: "junk-boot",
+    name: "Old Boot",
+    rarity: "common",
+    locationId: "",
+    weight: 1,
+    fightStrength: 0.1,
+    fightSpeed: 0.6,
+    depth: 0.2,
+    biteDelay: [0.6, 1.6],
+    bodyLength: 22,
+    colors: { body: 0x5c4a3a, belly: 0x8a6a52, fin: 0x3a2c20 },
+    sellValue: 0,
+    kind: "junk",
+  },
+  {
+    id: "junk-can",
+    name: "Rusty Can",
+    rarity: "common",
+    locationId: "",
+    weight: 1,
+    fightStrength: 0.08,
+    fightSpeed: 0.5,
+    depth: 0.15,
+    biteDelay: [0.5, 1.4],
+    bodyLength: 16,
+    colors: { body: 0x8a8a7a, belly: 0xb8b8a8, fin: 0x5a5a4a },
+    sellValue: 0,
+    kind: "junk",
+  },
+];
+
+export const ROD_DROP_ITEM: FishSpecies = {
+  id: "special-rod-drop",
+  name: "Waterlogged Rod",
+  rarity: "rare",
+  locationId: "",
+  weight: 1,
+  fightStrength: 0.2,
+  fightSpeed: 0.8,
+  depth: 0.3,
+  biteDelay: [1, 2.4],
+  bodyLength: 26,
+  colors: { body: 0x6b5a42, belly: 0x9a8868, fin: 0x4a3c2a },
+  sellValue: 0,
+  kind: "rod-drop",
+};
+
+export const SHARK_ITEM: FishSpecies = {
+  id: "great-white",
+  name: "Great White",
+  rarity: "legendary",
+  locationId: "",
+  weight: 1,
+  fightStrength: 1,
+  fightSpeed: 1.3,
+  depth: 0.6,
+  biteDelay: [2, 4],
+  bodyLength: 60,
+  colors: { body: 0x5c6670, belly: 0xe8ecef, fin: 0x2e3438 },
+  sellValue: 1200,
+  kind: "shark",
+};
+
+/** Deep/open water only — a shark washing up in a shallow pond wouldn't make sense. */
+export const SHARK_LOCATIONS = ["ocean-pier", "deep-abyss", "crystal-lake"];
+
+/** All non-fish catches that need a swim-sprite texture generated for them, same as any FishSpecies. */
+export const SPECIAL_CATCHES: FishSpecies[] = [...JUNK_ITEMS, ROD_DROP_ITEM, SHARK_ITEM];
+
 export function fishById(id: string): FishSpecies | undefined {
-  return FISH_SPECIES.find((f) => f.id === id);
+  return FISH_SPECIES.find((f) => f.id === id) ?? SPECIAL_CATCHES.find((f) => f.id === id);
 }
 
 /** Every species at a location whose rarity falls within [minRarityIndex, maxRarityIndex]. */

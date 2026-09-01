@@ -1,7 +1,7 @@
 import { fishById, rarityIndex, type FishSpecies } from "./FishData";
 import { LOCATIONS } from "./LocationData";
 import { RODS } from "./RodData";
-import { BAITS } from "./BaitData";
+import { BAITS, UNLIMITED_BAIT_ID } from "./BaitData";
 
 export interface InventoryFish {
   uid: string;
@@ -14,7 +14,7 @@ const KEYS = {
   inventory: "pixelfish.inventory",
   ownedRods: "pixelfish.ownedRods",
   equippedRod: "pixelfish.equippedRod",
-  ownedBait: "pixelfish.ownedBait",
+  baitCounts: "pixelfish.baitCounts",
   equippedBait: "pixelfish.equippedBait",
   unlockedLocations: "pixelfish.unlockedLocations",
   currentLocation: "pixelfish.currentLocation",
@@ -44,7 +44,8 @@ export class Economy {
   inventory: InventoryFish[];
   ownedRodIds: string[];
   equippedRodId: string;
-  ownedBaitIds: string[];
+  /** baitId -> units in stock. Unlisted or UNLIMITED_BAIT_ID means "unlimited" — see baitCount(). */
+  baitCounts: Record<string, number>;
   equippedBaitId: string;
   unlockedLocationIds: string[];
   currentLocationId: string;
@@ -63,8 +64,8 @@ export class Economy {
     this.inventory = readJson(KEYS.inventory, []);
     this.ownedRodIds = readJson(KEYS.ownedRods, ["twig"]);
     this.equippedRodId = readJson(KEYS.equippedRod, "twig");
-    this.ownedBaitIds = readJson(KEYS.ownedBait, ["plain-worm"]);
-    this.equippedBaitId = readJson(KEYS.equippedBait, "plain-worm");
+    this.baitCounts = readJson(KEYS.baitCounts, {});
+    this.equippedBaitId = readJson(KEYS.equippedBait, UNLIMITED_BAIT_ID);
     this.unlockedLocationIds = readJson(KEYS.unlockedLocations, [LOCATIONS[0].id]);
     this.currentLocationId = readJson(KEYS.currentLocation, LOCATIONS[0].id);
 
@@ -177,16 +178,32 @@ export class Economy {
     writeJson(KEYS.equippedRod, rodId);
   }
 
-  ownsBait(baitId: string): boolean {
-    return this.ownedBaitIds.includes(baitId);
+  /** Grants a rod for free (a found/dropped rod, not a purchase) — no-op if already owned. */
+  grantRod(rodId: string): void {
+    if (this.ownsRod(rodId)) return;
+    this.ownedRodIds.push(rodId);
+    writeJson(KEYS.ownedRods, this.ownedRodIds);
   }
 
-  buyBait(baitId: string, cost: number): boolean {
-    if (this.ownsBait(baitId)) return true;
+  /** Units of `baitId` in stock. The unlimited bait always reports Infinity — never actually stored/decremented. */
+  baitCount(baitId: string): number {
+    if (baitId === UNLIMITED_BAIT_ID) return Infinity;
+    return this.baitCounts[baitId] ?? 0;
+  }
+
+  /** Buys one pack (see BAIT_PACK_SIZE) of `baitId` for `cost` coins, adding to its stock. */
+  buyBaitPack(baitId: string, cost: number, packSize: number): boolean {
     if (!this.spendCoins(cost)) return false;
-    this.ownedBaitIds.push(baitId);
-    writeJson(KEYS.ownedBait, this.ownedBaitIds);
+    this.baitCounts[baitId] = (this.baitCounts[baitId] ?? 0) + packSize;
+    writeJson(KEYS.baitCounts, this.baitCounts);
     return true;
+  }
+
+  /** Uses up one unit of `baitId` — a no-op for the unlimited bait. */
+  consumeBait(baitId: string): void {
+    if (baitId === UNLIMITED_BAIT_ID) return;
+    this.baitCounts[baitId] = Math.max(0, (this.baitCounts[baitId] ?? 0) - 1);
+    writeJson(KEYS.baitCounts, this.baitCounts);
   }
 
   equipBait(baitId: string): void {
@@ -218,8 +235,8 @@ export class Economy {
     this.equippedRodId = RODS[RODS.length - 1].id;
     writeJson(KEYS.equippedRod, this.equippedRodId);
 
-    this.ownedBaitIds = BAITS.map((b) => b.id);
-    writeJson(KEYS.ownedBait, this.ownedBaitIds);
+    for (const bait of BAITS) this.baitCounts[bait.id] = 999;
+    writeJson(KEYS.baitCounts, this.baitCounts);
     this.equippedBaitId = BAITS[BAITS.length - 1].id;
     writeJson(KEYS.equippedBait, this.equippedBaitId);
 

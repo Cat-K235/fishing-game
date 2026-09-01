@@ -14,13 +14,23 @@ import {
   depthToY,
 } from "../game/Constants";
 import { TEX } from "../game/Textures";
-import { FISH_SPECIES, getLocationPool, pickWeightedFish, rarityIndex, type FishSpecies } from "../game/FishData";
+import {
+  FISH_SPECIES,
+  getLocationPool,
+  pickWeightedFish,
+  rarityIndex,
+  JUNK_ITEMS,
+  ROD_DROP_ITEM,
+  SHARK_ITEM,
+  SHARK_LOCATIONS,
+  type FishSpecies,
+} from "../game/FishData";
 import { stepReel, type ReelState } from "../game/ReelMath";
 import { AudioSynth } from "../game/AudioSynth";
 import { TelegramService } from "../telegram/TelegramService";
 import { Economy } from "../game/Economy";
-import { rodById, tuningForRod, type RodDef } from "../game/RodData";
-import { baitById, type BaitDef } from "../game/BaitData";
+import { RODS, rodById, tuningForRod, type RodDef } from "../game/RodData";
+import { baitById, UNLIMITED_BAIT_ID, type BaitDef } from "../game/BaitData";
 import { locationById, locationRarityBounds, effectiveMaxRarityIndex, type LocationDef, type ParticleStyle } from "../game/LocationData";
 import { Fisherman, expressionForRarity } from "../game/Character";
 import { SideMenu } from "../ui/SideMenu";
@@ -30,7 +40,7 @@ import { MapsPanel } from "../ui/MapsPanel";
 import { FishdexPanel } from "../ui/FishdexPanel";
 import { QuestsPanel } from "../ui/QuestsPanel";
 import { showToast } from "../ui/Toast";
-import { BottomSheet, TEXT_STYLE } from "../ui/BottomSheet";
+import { BottomSheet, TEXT_STYLE, onTap } from "../ui/BottomSheet";
 
 type FishingState = "idle" | "casting" | "waiting" | "reeling" | "result";
 
@@ -149,6 +159,8 @@ export class GameScene extends Phaser.Scene {
 
   private coinText!: Phaser.GameObjects.Text;
   private locationText!: Phaser.GameObjects.Text;
+  private baitIcon!: Phaser.GameObjects.Image;
+  private baitCountText!: Phaser.GameObjects.Text;
 
   private shopPanel!: ShopPanel;
   private sellPanel!: SellPanel;
@@ -644,6 +656,14 @@ export class GameScene extends Phaser.Scene {
       .setDepth(40);
     this.add.image(16, 18, TEX.coin).setDepth(40);
 
+    // Active-bait indicator: tap it to open the Shop's BAIT tab and pick a
+    // different one. A plain cast always just uses whatever's shown here,
+    // no popup — see the note on rollSpecialCatch/startCast.
+    this.baitIcon = this.add.image(17, 42, TEX.baitIcon(this.bait.id)).setDepth(40).setScale(0.8);
+    this.baitCountText = this.add.text(30, 36, "", { ...TEXT_STYLE, fontSize: "12px" }).setDepth(40);
+    const baitHit = this.add.rectangle(28, 42, 62, 26, 0x000000, 0.001).setDepth(41).setInteractive({ useHandCursor: true });
+    onTap(baitHit, () => this.openShopBaitTab());
+
     this.muteBtn = this.add
       .text(WORLD_W - 26, 10, this.audio.isMuted() ? "\u{1F507}" : "\u{1F50A}", { fontSize: "16px" })
       .setDepth(40)
@@ -671,13 +691,27 @@ export class GameScene extends Phaser.Scene {
     const cardBg = this.add.rectangle(0, 0, 220, 100, 0x1c2030, 0.92).setStrokeStyle(3, 0xffd93d);
     const cardTitle = this.add
       .text(0, -34, "CAUGHT!", { ...TEXT_STYLE, fontSize: "12px", color: "#ffd93d" })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setName("title");
     const cardName = this.add.text(0, -10, "", { ...TEXT_STYLE, fontSize: "16px" }).setOrigin(0.5).setName("name");
     const cardMeta = this.add
       .text(0, 16, "", { ...TEXT_STYLE, fontSize: "12px", color: "#9aa0b4" })
       .setOrigin(0.5)
       .setName("meta");
     this.catchCard.add([cardBg, cardTitle, cardName, cardMeta]);
+
+    this.refreshBaitHud();
+  }
+
+  private refreshBaitHud(): void {
+    this.baitIcon.setTexture(TEX.baitIcon(this.bait.id));
+    this.baitCountText.setText(this.bait.id === UNLIMITED_BAIT_ID ? "∞" : `x${this.economy.baitCount(this.bait.id)}`);
+  }
+
+  private openShopBaitTab(): void {
+    if (this.state !== "idle") return;
+    for (const p of this.allPanels()) if (p !== this.shopPanel && p.isOpen) p.close();
+    this.shopPanel.openToBait();
   }
 
   private buildPanels(): void {
@@ -686,6 +720,7 @@ export class GameScene extends Phaser.Scene {
       this.bait = baitById(this.economy.equippedBaitId);
       this.fisherman.setRod(this.rod.id);
       this.refreshCoins();
+      this.refreshBaitHud();
     });
     this.sellPanel = new SellPanel(this, this.economy, (earned) => this.onFishSold(earned));
     this.mapsPanel = new MapsPanel(
@@ -782,16 +817,50 @@ export class GameScene extends Phaser.Scene {
 
   // ----------------------------------------------------------------- CAST
 
+  // Junk/rod-drop/shark are rolled independently of the normal fish pool —
+  // they aren't gated by bait rarity ceiling (a shark washing up is a
+  // one-off surprise, not something you "unlock" with better bait), and a
+  // hit here bypasses the "bait can't handle these waters" pool-empty check
+  // below entirely, since there's nothing to hook a fish with in that case
+  // but there's still a boot to find.
+  private static readonly JUNK_CHANCE = 0.08;
+  private static readonly ROD_DROP_CHANCE = 0.015;
+  private static readonly SHARK_CHANCE = 0.01;
+
+  private rollSpecialCatch(): FishSpecies | null {
+    const roll = Math.random();
+    if (roll < GameScene.JUNK_CHANCE) return pickWeightedFish(JUNK_ITEMS);
+    if (roll < GameScene.JUNK_CHANCE + GameScene.ROD_DROP_CHANCE && this.economy.ownedRodIds.length < RODS.length) {
+      return ROD_DROP_ITEM;
+    }
+    if (
+      roll < GameScene.JUNK_CHANCE + GameScene.ROD_DROP_CHANCE + GameScene.SHARK_CHANCE &&
+      SHARK_LOCATIONS.includes(this.location.id)
+    ) {
+      return SHARK_ITEM;
+    }
+    return null;
+  }
+
   private startCast(px: number, py: number): void {
     const bounds = locationRarityBounds(this.location);
     const maxIdx = effectiveMaxRarityIndex(this.location, this.bait);
     const pool = getLocationPool(this.location.id, bounds.min, maxIdx);
-    if (pool.length === 0) {
+
+    const special = this.rollSpecialCatch();
+    if (!special && pool.length === 0) {
       showToast(this, "YOUR BAIT CAN'T HANDLE THESE WATERS", DOCK_TOP - 60, "#e63946");
       return;
     }
 
     this.economy.recordCast();
+    this.economy.consumeBait(this.bait.id);
+    if (this.bait.id !== UNLIMITED_BAIT_ID && this.economy.baitCount(this.bait.id) <= 0) {
+      showToast(this, `OUT OF ${this.bait.name.toUpperCase()} — BACK TO PLAIN WORM`, DOCK_TOP - 60, "#e63946");
+      this.economy.equipBait(UNLIMITED_BAIT_ID);
+      this.bait = baitById(UNLIMITED_BAIT_ID);
+    }
+    this.refreshBaitHud();
     this.sideMenu.collapse();
 
     this.state = "casting";
@@ -803,7 +872,7 @@ export class GameScene extends Phaser.Scene {
     const baseDuration = 0.32 + (Math.abs(ty - this.castFrom.y) / (CAST_MAX_Y - CAST_MIN_Y)) * 0.28;
     this.castDuration = baseDuration / this.rod.castSpeedMult;
 
-    this.currentFish = pickWeightedFish(pool, this.bait.rareBonusPct);
+    this.currentFish = special ?? pickWeightedFish(pool, this.bait.rareBonusPct);
 
     this.bobber.setVisible(true);
     this.bobber.setScale(1);
@@ -1065,7 +1134,8 @@ export class GameScene extends Phaser.Scene {
     sprite.setScale(2.1, 1.1);
     this.tweens.add({ targets: sprite, scaleX: 1.6, scaleY: 1.6, duration: 260, ease: "Elastic.Out" });
 
-    const big = rarityIndex(fish.rarity) >= rarityIndex("epic");
+    const isShark = fish.kind === "shark";
+    const big = isShark || rarityIndex(fish.rarity) >= rarityIndex("epic");
 
     this.flashRect.setAlpha(big ? 0.8 : 0.5);
     this.tweens.add({ targets: this.flashRect, alpha: 0, duration: big ? 320 : 180 });
@@ -1077,12 +1147,32 @@ export class GameScene extends Phaser.Scene {
     this.telegram.hapticNotification("success");
 
     this.fisherman.playCatch(expressionForRarity(fish.rarity));
-    this.economy.addFish(fish.id);
 
+    const titleText = this.catchCard.getByName("title") as Phaser.GameObjects.Text;
     const nameText = this.catchCard.getByName("name") as Phaser.GameObjects.Text;
     const metaText = this.catchCard.getByName("meta") as Phaser.GameObjects.Text;
-    nameText.setText(fish.name);
-    metaText.setText(`${fish.rarity.toUpperCase()}  ~${fish.sellValue}c`);
+
+    if (fish.kind === "junk") {
+      // No reward, no inventory slot, no Fishdex entry — a wasted cast, on purpose.
+      titleText.setText("JUST JUNK...");
+      nameText.setText(fish.name);
+      metaText.setText("NOT A FISH");
+    } else if (fish.kind === "rod-drop") {
+      const candidates = RODS.filter((r) => !this.economy.ownsRod(r.id));
+      const rod = candidates[Math.floor(Math.random() * candidates.length)] ?? RODS[RODS.length - 1];
+      this.economy.grantRod(rod.id);
+      this.economy.equipRod(rod.id);
+      this.rod = rodById(rod.id);
+      this.fisherman.setRod(rod.id);
+      titleText.setText("FOUND A ROD!");
+      nameText.setText(rod.name);
+      metaText.setText("EQUIPPED FOR FREE");
+    } else {
+      titleText.setText(isShark ? "🦈 SHARK!" : "CAUGHT!");
+      this.economy.addFish(fish.id);
+      nameText.setText(fish.name);
+      metaText.setText(`${fish.rarity.toUpperCase()}  ~${fish.sellValue}c`);
+    }
     this.tweens.add({ targets: this.catchCard, alpha: 1, duration: 150 });
 
     this.time.delayedCall(1300, () => {
