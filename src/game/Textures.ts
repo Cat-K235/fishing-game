@@ -25,6 +25,13 @@ function rgbToCss([r, g, b]: [number, number, number], a = 1): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
+/** Nudges a hex color's channels by `amt` (negative darkens, positive lightens), for deriving shade/highlight tones from a single palette color. */
+function shade(hex: number, amt: number): number {
+  const [r, g, b] = hexToRgb(hex);
+  const c = (v: number) => Phaser.Math.Clamp(Math.round(v + amt), 0, 255);
+  return (c(r) << 16) | (c(g) << 8) | c(b);
+}
+
 /** Ordered (Bayer) dithered fill between two colors across a rect, in `block`-px cells. */
 function ditherRect(
   ctx: CanvasRenderingContext2D,
@@ -181,6 +188,94 @@ export function generateGrassEdge(scene: Phaser.Scene, key: string, w: number, h
     ctx.fillStyle = rgbToCss(hexToRgb(n < 0.5 ? pal.mountainHaze : pal.treeline));
     ctx.fillRect(x, 0, 2, h);
   }
+  refresh(scene, key);
+}
+
+/**
+ * A small standalone specimen tree — shaded trunk, a couple of branch
+ * stubs, and a layered 3-tone canopy (shadow/base/highlight blobs plus a
+ * sparse leaf-fleck dither) — for scattering a few close, detailed trees in
+ * front of the hazy background treeline. Distinct from that treeline: this
+ * has real structure (trunk, shading) rather than reading as flat circles.
+ */
+export function generateTree(scene: Phaser.Scene, key: string, pal: LocationPalette, seed: number): void {
+  const w = 32,
+    h = 58;
+  const ctx = createCtx(scene, key, w, h);
+  let rnd = seed;
+  const next = () => {
+    rnd = (rnd * 9301 + 49297) % 233280;
+    return rnd / 233280;
+  };
+
+  // Lightened hard, not just nudged, so the canopy reads as sunlit foliage
+  // standing apart from the much darker background treeline it overlaps,
+  // instead of blending into it as another dark shape.
+  const canopyShadow = shade(pal.treeline, -4);
+  const canopyBase = shade(pal.treeline, 62);
+  const canopyHighlight = shade(pal.treeline, 108);
+  const outline = "rgba(0,0,0,0.5)";
+
+  const cx = w / 2;
+  const trunkTopY = h - 20;
+
+  // Trunk, with a lit face down one side, plus two angled branch stubs.
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
+  ctx.fillRect(cx - 2.5, trunkTopY, 5, h - trunkTopY);
+  ctx.fillStyle = rgbToCss(hexToRgb(pal.dockWood));
+  ctx.fillRect(cx - 2.5, trunkTopY, 2, h - trunkTopY);
+  ctx.strokeStyle = rgbToCss(hexToRgb(pal.dockWoodDark));
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(cx, trunkTopY + 3);
+  ctx.lineTo(cx - 8, trunkTopY - 8);
+  ctx.moveTo(cx, trunkTopY + 6);
+  ctx.lineTo(cx + 9, trunkTopY - 7);
+  ctx.stroke();
+
+  // Canopy: an outlined shadow silhouette first (the outline is what
+  // separates it from a busy background), then base lobes, then highlight dabs.
+  const shadowBlobs: [number, number, number, number][] = [
+    [0, 16, 14, 13],
+    [-7, 20, 8, 7],
+    [7, 19, 8.5, 7.5],
+  ];
+  ctx.fillStyle = rgbToCss(hexToRgb(canopyShadow));
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 1.6;
+  for (const [dx, dy, rx, ry] of shadowBlobs) {
+    ctx.beginPath();
+    ctx.ellipse(cx + dx, trunkTopY - dy + 16, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  const litBlobs: [number, number, number, number, number][] = [
+    [0, 10, 11, 9, 1],
+    [-7, 13, 6.5, 5.5, 1],
+    [7, 12, 7, 6, 1],
+    [-3, 4, 5.5, 4.8, 2],
+    [5, 6, 5, 4.4, 2],
+    [0, 0, 3.6, 3.2, 2],
+  ];
+  const tones = [canopyShadow, canopyBase, canopyHighlight];
+  for (const [dx, dy, rx, ry, tone] of litBlobs) {
+    ctx.fillStyle = rgbToCss(hexToRgb(tones[tone]));
+    ctx.beginPath();
+    ctx.ellipse(cx + dx, trunkTopY - dy + 16, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Sparse fleck texture so the canopy reads as leafy rather than flat-filled.
+  for (let i = 0; i < 16; i++) {
+    const angle = next() * Math.PI * 2;
+    const r = next() * 12;
+    const fx = cx + Math.cos(angle) * r;
+    const fy = trunkTopY - 4 + Math.sin(angle) * r * 0.75;
+    ctx.fillStyle = rgbToCss(hexToRgb(next() > 0.45 ? canopyHighlight : canopyShadow), 0.55);
+    ctx.fillRect(fx, fy, 1.8, 1.8);
+  }
+
   refresh(scene, key);
 }
 
@@ -1039,6 +1134,7 @@ export const TEX = {
   mountains: (loc: string) => `tex-mountains-${loc}`,
   treeline: (loc: string) => `tex-treeline-${loc}`,
   grassEdge: (loc: string) => `tex-grassedge-${loc}`,
+  tree: (loc: string, variant: number) => `tex-tree-${loc}-${variant}`,
   water: (loc: string) => `tex-water-${loc}`,
   ambient: (style: string) => `tex-ambient-${style}`,
   lilyPad: (i: number, flower: boolean) => `tex-lilypad-${i}-${flower ? "f" : "n"}`,
@@ -1086,6 +1182,7 @@ export function generateAllTextures(scene: Phaser.Scene, w: number, h: number): 
     generateMountains(scene, TEX.mountains(loc.id), w, 60, loc.palette);
     generateTreeline(scene, TEX.treeline(loc.id), w, 40, loc.palette);
     generateGrassEdge(scene, TEX.grassEdge(loc.id), w, 8, loc.palette);
+    for (let i = 0; i < 3; i++) generateTree(scene, TEX.tree(loc.id, i), loc.palette, i * 37 + 5);
     generateWaterTile(scene, TEX.water(loc.id), 32, loc.palette);
     generateDockPlank(scene, TEX.dockPlank(loc.id), 40, 16, loc.palette);
     generateDockPost(scene, TEX.dockPost(loc.id), loc.palette);

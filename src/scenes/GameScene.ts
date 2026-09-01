@@ -416,7 +416,32 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // Hand-placed so they read as a few deliberate specimen trees standing at
+  // the shoreline, in front of the hazy background treeline, not a repeated
+  // pattern — scale/variant vary so no two look identical.
+  private static readonly TREE_LAYOUT: { xr: number; scale: number; variant: number; seed: number }[] = [
+    { xr: 0.08, scale: 1.05, variant: 0, seed: 5 },
+    { xr: 0.24, scale: 0.85, variant: 1, seed: 40 },
+    { xr: 0.65, scale: 0.95, variant: 2, seed: 70 },
+    { xr: 0.88, scale: 1.15, variant: 0, seed: 100 },
+  ];
+
+  private spawnTrees(): void {
+    for (const spot of GameScene.TREE_LAYOUT) {
+      const x = spot.xr * WORLD_W;
+      const y = HORIZON_Y + 4;
+      const tree = this.add.image(x, y, TEX.tree(this.location.id, spot.variant)).setOrigin(0.5, 1).setScale(spot.scale);
+      this.bgLayer.add(tree);
+      let swayT = spot.seed;
+      this.specialUpdaters.push((_time, dt) => {
+        swayT += dt;
+        tree.setRotation(Math.sin(swayT * 0.7) * 0.015);
+      });
+    }
+  }
+
   private spawnPondSpecials(): void {
+    this.spawnTrees();
     for (let i = 0; i < 3; i++) {
       const cloud = this.add
         .image(Math.random() * WORLD_W, 18 + Math.random() * 70, TEX.cloud)
