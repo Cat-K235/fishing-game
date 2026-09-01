@@ -134,12 +134,6 @@ export class GameScene extends Phaser.Scene {
   private reelState: ReelState = { progress: 0, tension: 0 };
   private reelGrace = 0;
   private fightT = 0;
-  // Toggled by tapping during the fight instead of read from the pointer's
-  // held-down state — on a touchscreen you only have one finger, so holding
-  // to reel made it physically impossible to also tap the mute button or
-  // side menu mid-fight. A tap now flips this and keeps reeling until the
-  // next tap, freeing the pointer for everything else in between.
-  private holdReel = false;
   private fightSwaySeed = 0;
   private reelTickAccum = 0;
   /** 0..1 — ramps up while the fish is actively resisting (not being held, fighting hard) and eases back down otherwise. */
@@ -750,7 +744,10 @@ export class GameScene extends Phaser.Scene {
   private wireInput(): void {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (this.state === "idle" && !this.anyPanelOpen()) this.startCast(pointer.x, pointer.y);
-      else if (this.state === "reeling") this.toggleHoldReel();
+      // Bobber's just sitting out waiting for a bite, not a fight to hold
+      // through — a tap here reels it straight back in instead of making
+      // you wait out the rest of the bite timer.
+      else if (this.state === "waiting") this.cancelCast();
     });
   }
 
@@ -858,7 +855,6 @@ export class GameScene extends Phaser.Scene {
     this.hookedFishRunT = 0;
     this.biteSinkT = 0;
     this.tensionVisible = true;
-    this.holdReel = false;
 
     this.bobberY = this.castTo.y + 12;
     this.bobber.setScale(0.8, 1.3);
@@ -876,13 +872,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(120, 0.006);
     this.audio.bitePing();
     this.telegram.haptic("medium");
-    this.hudPrompt.setText("TAP TO REEL!");
-  }
-
-  private toggleHoldReel(): void {
-    this.holdReel = !this.holdReel;
-    this.hudPrompt.setText(this.holdReel ? "TAP TO REST" : "TAP TO REEL!");
-    this.telegram.haptic("light");
+    this.hudPrompt.setText("HOLD TO REEL!");
   }
 
   // -------------------------------------------------------------- REELING
@@ -895,7 +885,7 @@ export class GameScene extends Phaser.Scene {
       Math.sin(this.fightT * fish.fightSpeed * 5.3 + this.fightSwaySeed) * 0.2;
 
     const t = Phaser.Math.Clamp(this.reelState.progress / 100, 0, 1);
-    const holding = this.holdReel;
+    const holding = this.input.activePointer.isDown;
 
     // Right after the bite the hook is still essentially at the surface —
     // it sinks down to fight depth over BITE_SINK_SECONDS rather than
@@ -1151,6 +1141,35 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.time.delayedCall(750, () => this.resetToIdle());
+  }
+
+  /** Tapping while the bobber's just sitting out waiting for a bite reels it straight back in. */
+  private cancelCast(): void {
+    this.state = "result";
+    this.hudPrompt.setText("");
+
+    const snapBackX = DOCK_CENTER_X;
+    const snapBackY = PLAYER_Y;
+    this.tweens.add({
+      targets: this.bobber,
+      x: snapBackX,
+      y: snapBackY,
+      scaleX: 0.6,
+      scaleY: 1.5,
+      duration: 220,
+      ease: "Back.In",
+      onUpdate: () => {
+        this.bobberX = this.bobber.x;
+        this.bobberY = this.bobber.y;
+      },
+      onComplete: () => {
+        this.bobber.setVisible(false);
+        this.bobber.setScale(1);
+      },
+    });
+
+    this.telegram.haptic("light");
+    this.time.delayedCall(240, () => this.resetToIdle());
   }
 
   /** The hooked fish darts off and fades out — used when the line snaps or the fish escapes. */
