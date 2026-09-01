@@ -32,11 +32,6 @@ export class QuestsPanel extends BottomSheet {
     const scene = this.scene;
     const p = this.progress();
 
-    const claimedCount = QUESTS.filter((q) => this.economy.isQuestClaimed(q.id)).length;
-    this.content.add(
-      scene.add.text(this.sheetW / 2, 0, `${claimedCount} / ${QUESTS.length} CLAIMED`, { ...TEXT_STYLE, fontSize: "11px", color: "#9aa0b4" }).setOrigin(0.5)
-    );
-
     const list = scene.add.container(16, HEADER_H);
     this.content.add(list);
     const barW = this.sheetW - 32 - 78;
@@ -75,8 +70,20 @@ export class QuestsPanel extends BottomSheet {
 
     const contentH = QUESTS.length * ROW_H;
     const viewportH = this.sheetH - 44 - HEADER_H - 16;
-    this.clipContent(list, 0, HEADER_H, this.sheetW, viewportH);
-    const scroller = new VerticalScroller(list, viewportH, contentH);
+    const scroller = new VerticalScroller(list, viewportH, contentH, ROW_H);
     scroller.enableDrag(scene, this.content, this.sheetW / 2, HEADER_H + viewportH / 2, this.sheetW - 16, viewportH);
+
+    // Header text is added last, on top of an opaque cover, so a
+    // scrolled-past row can't visually bleed over it — see the note on
+    // BottomSheet's own header bar for why this can't just be clipped away.
+    const headerCover = scene.add.graphics();
+    headerCover.fillStyle(0x1c2030, 1);
+    headerCover.fillRect(0, -12, this.sheetW, HEADER_H + 12);
+    this.content.add(headerCover);
+
+    const claimedCount = QUESTS.filter((q) => this.economy.isQuestClaimed(q.id)).length;
+    this.content.add(
+      scene.add.text(this.sheetW / 2, 0, `${claimedCount} / ${QUESTS.length} CLAIMED`, { ...TEXT_STYLE, fontSize: "11px", color: "#9aa0b4" }).setOrigin(0.5)
+    );
   }
 }

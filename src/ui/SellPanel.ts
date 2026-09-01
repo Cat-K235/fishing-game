@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { BottomSheet, TEXT_STYLE, makeButton, VerticalScroller } from "./BottomSheet";
+import { BottomSheet, TEXT_STYLE, makeButton, onTap, VerticalScroller } from "./BottomSheet";
 import { TEX } from "../game/Textures";
 import type { Economy } from "../game/Economy";
 import { RARITY_COLORS } from "../game/FishData";
@@ -65,21 +65,23 @@ export class SellPanel extends BottomSheet {
       const value = scene.add.text(0, 28, `${row.species.sellValue}c`, { ...TEXT_STYLE, fontSize: "10px", color: "#ffd93d" }).setOrigin(0.5);
       cell.add(value);
 
-      bg.setInteractive({ useHandCursor: true }).on(
-        "pointerdown",
-        (_p: unknown, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
-          ev.stopPropagation();
-          if (isSelected) this.selected.delete(row.entry.uid);
-          else this.selected.add(row.entry.uid);
-          this.render();
-        }
-      );
+      onTap(bg, () => {
+        if (isSelected) this.selected.delete(row.entry.uid);
+        else this.selected.add(row.entry.uid);
+        this.render();
+      });
     });
 
     const viewportH = this.sheetH - 44 - FOOTER_H - 16;
-    this.clipContent(grid, 0, 0, this.sheetW, viewportH);
-    const scroller = new VerticalScroller(grid, viewportH, contentH);
+    const scroller = new VerticalScroller(grid, viewportH, contentH, CELL_H, true);
     scroller.enableDrag(scene, this.content, this.sheetW / 2, viewportH / 2, this.sheetW - 16, viewportH);
+
+    // Covers any grid content that's scrolled down past the viewport
+    // bottom, so it can't visually bleed behind the footer buttons below.
+    const footerCover = scene.add.graphics();
+    footerCover.fillStyle(0x1c2030, 1);
+    footerCover.fillRect(0, viewportH, this.sheetW, FOOTER_H);
+    this.content.add(footerCover);
 
     const footerY = viewportH + 24;
     this.content.add(

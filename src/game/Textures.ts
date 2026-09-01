@@ -157,15 +157,18 @@ export function generateWaterTile(scene: Phaser.Scene, key: string, size: number
   ctx.fillStyle = rgbToCss(hexToRgb(pal.waterMid));
   ctx.fillRect(0, 0, size, size);
 
+  // Kept sparse — dense fleck reads as noise rather than texture, especially
+  // on palettes like River Gorge's where the shimmer color contrasts hard
+  // against the water.
   const block = 2;
   for (let y = 0; y < size; y += block) {
     for (let x = 0; x < size; x += block) {
       const n = cellHash(x / block, y / block, 31);
-      if (n > 0.94) {
-        ctx.fillStyle = rgbToCss(hexToRgb(pal.shimmer), 0.2);
+      if (n > 0.975) {
+        ctx.fillStyle = rgbToCss(hexToRgb(pal.shimmer), 0.14);
         ctx.fillRect(x, y, block, block);
-      } else if (n > 0.82 || n < 0.1) {
-        ctx.fillStyle = rgbToCss(hexToRgb(pal.waterDeep), 0.4);
+      } else if (n > 0.9) {
+        ctx.fillStyle = rgbToCss(hexToRgb(pal.waterDeep), 0.28);
         ctx.fillRect(x, y, block, block);
       }
     }

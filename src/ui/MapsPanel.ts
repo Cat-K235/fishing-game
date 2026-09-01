@@ -32,8 +32,7 @@ export class MapsPanel extends BottomSheet {
     LOCATIONS.forEach((_loc, i) => this.buildCard(list, i));
 
     const viewportH = this.sheetH - 44 - 16;
-    this.clipContent(list, 0, 0, this.sheetW, viewportH);
-    const scroller = new VerticalScroller(list, viewportH, contentH);
+    const scroller = new VerticalScroller(list, viewportH, contentH, CARD_H);
     scroller.enableDrag(scene, this.content, this.sheetW / 2, viewportH / 2, this.sheetW - 16, viewportH);
   }
 

@@ -29,14 +29,6 @@ export class ShopPanel extends BottomSheet {
     this.content.removeAll(true);
     const scene = this.scene;
 
-    const tabBtn = (label: string, tab: Tab, x: number) =>
-      makeButton(scene, x, 0, 96, 24, label, this.tab === tab ? 0xffd93d : 0x3a3f4a, () => {
-        this.tab = tab;
-        this.render();
-      });
-    this.content.add(tabBtn("BAIT", "bait", this.sheetW / 2 - 54));
-    this.content.add(tabBtn("RODS", "rods", this.sheetW / 2 + 54));
-
     const items = this.tab === "bait" ? BAITS : RODS;
     const gridW = COLS * CARD_W + (COLS - 1) * GAP;
     const startX = (this.sheetW - gridW) / 2;
@@ -49,9 +41,24 @@ export class ShopPanel extends BottomSheet {
     else RODS.forEach((r, i) => this.buildRodCard(list, r, i));
 
     const viewportH = this.sheetH - 44 - TABS_H - 16;
-    this.clipContent(list, 0, TABS_H, this.sheetW, viewportH);
-    const scroller = new VerticalScroller(list, viewportH, contentH);
+    const scroller = new VerticalScroller(list, viewportH, contentH, CARD_H);
     scroller.enableDrag(scene, this.content, this.sheetW / 2, TABS_H + viewportH / 2, this.sheetW - 16, viewportH);
+
+    // Tabs are added last (on top of the list, over an opaque cover) so a
+    // scrolled-past card can't visually bleed over them — see the note on
+    // BottomSheet's own header bar for why this can't just be clipped away.
+    const tabsCover = scene.add.graphics();
+    tabsCover.fillStyle(0x1c2030, 1);
+    tabsCover.fillRect(0, -12, this.sheetW, TABS_H + 12);
+    this.content.add(tabsCover);
+
+    const tabBtn = (label: string, tab: Tab, x: number) =>
+      makeButton(scene, x, 0, 96, 24, label, this.tab === tab ? 0xffd93d : 0x3a3f4a, () => {
+        this.tab = tab;
+        this.render();
+      });
+    this.content.add(tabBtn("BAIT", "bait", this.sheetW / 2 - 54));
+    this.content.add(tabBtn("RODS", "rods", this.sheetW / 2 + 54));
   }
 
   private buildBaitCard(list: Phaser.GameObjects.Container, bait: BaitDef, index: number): void {

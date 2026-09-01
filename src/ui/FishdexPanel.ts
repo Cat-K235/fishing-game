@@ -24,11 +24,6 @@ export class FishdexPanel extends BottomSheet {
     this.content.removeAll(true);
     const scene = this.scene;
 
-    const known = FISH_SPECIES.filter((f) => this.economy.discoveredFish[f.id]).length;
-    this.content.add(
-      scene.add.text(this.sheetW / 2, 0, `${known} / ${FISH_SPECIES.length} DISCOVERED`, { ...TEXT_STYLE, fontSize: "11px", color: "#9aa0b4" }).setOrigin(0.5)
-    );
-
     const startX = (this.sheetW - COLS * CELL_W) / 2;
     const rows = Math.ceil(FISH_SPECIES.length / COLS);
     const contentH = rows * CELL_H;
@@ -66,8 +61,20 @@ export class FishdexPanel extends BottomSheet {
     });
 
     const viewportH = this.sheetH - 44 - HEADER_H - 16;
-    this.clipContent(grid, 0, HEADER_H, this.sheetW, viewportH);
-    const scroller = new VerticalScroller(grid, viewportH, contentH);
+    const scroller = new VerticalScroller(grid, viewportH, contentH, CELL_H, true);
     scroller.enableDrag(scene, this.content, this.sheetW / 2, HEADER_H + viewportH / 2, this.sheetW - 16, viewportH);
+
+    // Header text is added last, on top of an opaque cover, so a
+    // scrolled-past cell can't visually bleed over it — see the note on
+    // BottomSheet's own header bar for why this can't just be clipped away.
+    const headerCover = scene.add.graphics();
+    headerCover.fillStyle(0x1c2030, 1);
+    headerCover.fillRect(0, -12, this.sheetW, HEADER_H + 12);
+    this.content.add(headerCover);
+
+    const known = FISH_SPECIES.filter((f) => this.economy.discoveredFish[f.id]).length;
+    this.content.add(
+      scene.add.text(this.sheetW / 2, 0, `${known} / ${FISH_SPECIES.length} DISCOVERED`, { ...TEXT_STYLE, fontSize: "11px", color: "#9aa0b4" }).setOrigin(0.5)
+    );
   }
 }
